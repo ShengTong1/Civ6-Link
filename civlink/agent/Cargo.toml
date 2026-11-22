@@ -1,0 +1,24 @@
+[package]
+name = "civlink-agent"
+version = "0.4.6"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+description = "CivLink F1 Agent: receives CVLH2 frames from civlink_hook.dll and reconciles counts; F2 --simulate-datapath observes the 62056 data plane (D4 single probe only)"
+
+# Default build stays ZERO-dependency: `cargo +1.75.0 build --offline` on a machine with
+# no crate cache succeeds, keeping the F1/F2/F5/E2 audit surface small.
+# The optional M0-G `--peer-discover` mode is gated behind the `peer-discover` feature
+# (off by default). When enabled it needs vendored crates (see ./vendor + ./.cargo/config.toml).
+# Decision record: docs/RUST-NETLIB-FACTCHECK-20261120.md + docs/PEER-DISCOVERY-RESEARCH-20261120.md.
+[dependencies]
+if-addrs = { version = "0.15", optional = true }
+socket2 = { version = "0.6", optional = true, features = ["all"] }
+
+[features]
+default = []
+peer-discover = ["dep:if-addrs", "dep:socket2"]
+
+[[bin]]
+name = "civlink-agent"
+path = "src/main.rs"

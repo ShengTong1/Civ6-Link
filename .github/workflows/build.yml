@@ -1,0 +1,30 @@
+name: build-civtrace
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vendor MinHook v1.3.4 (BSD-2, build-time dependency only)
+        run: git clone --depth 1 --branch v1.3.4 https://github.com/TsudaKageyu/minhook.git deps/MinHook
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-make
+
+      - shell: msys2 {0}
+        run: |
+          cd civtrace
+          mingw32-make CXX=g++
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: civtrace-build
+          path: |
+            civtrace/civtrace.dll
+            civtrace/civinject.exe
+          if-no-files-found: error

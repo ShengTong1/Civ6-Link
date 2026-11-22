@@ -1,0 +1,5 @@
+﻿31FAF9CF1424658E  C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\docs\diagnostics\a6-sobroadcast-experiments\sobroadcast_c5.c
+F3A21F7A53AC5CC4  C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\docs\diagnostics\a6-sobroadcast-experiments\sobroadcast_c6.c
+A06B581E58EEDC07  C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\docs\diagnostics\a6-sobroadcast-experiments\sobroadcast_c5.exe
+0FD3E5B404CB020C  C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\docs\diagnostics\a6-sobroadcast-experiments\sobroadcast_c6.exe
+AF80A786249A75AD  C:\Users\dd\AppData\Local\CivLink\M0A\logs\civtrace_20261111_163115_pid53584.log

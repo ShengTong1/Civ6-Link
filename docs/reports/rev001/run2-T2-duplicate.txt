@@ -1,0 +1,9 @@
+﻿civinject v0.4 - CivLink M0-A trace DLL injector
+[*] 'powershell.exe' matched 3 process(es):
+      pid=35244 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=37008 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=36632 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+[*] inject into pid=36632: C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\civtrace\civtrace.dll
+[!] civtrace.dll already loaded @ 0x7ff9cdcb0000 - skip duplicate injection (use -u first)
+
+exit=0

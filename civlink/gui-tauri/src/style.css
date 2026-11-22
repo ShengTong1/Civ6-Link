@@ -1,0 +1,162 @@
+/* CivLink GUI - light professional theme (Minimalism & Swiss Style, navy accent).
+   Design tokens below are the ONLY palette: never hardcode hex in components.
+   Layout contract: the WINDOW never scrolls. Each tab is a column that fills the
+   viewport; the result/log cards own the leftover height with inner scrollbars. */
+:root{
+  /* palette (ui-ux-pro-max: Navy professional) */
+  --bg:#F8FAFC; --surface:#FFFFFF; --muted:#F1F3F5;
+  --border:#E4E7EB; --text:#0F172A; --text-mid:#475569; --text-soft:#64748B;
+  --primary:#1E3A5F; --primary-hover:#16304F; --accent:#2563EB; --accent-soft:#E8F0FE;
+  --ok:#059669; --ok-bg:#ECFDF5; --danger:#DC2626; --danger-bg:#FEF2F2;
+  --warning:#B45309; --warning-bg:#FFF7ED; --warning-border:#FDBA74;
+  --chip-bg:#EEF1F4; --chip-text:#5A6672; --accent-deep:#1D4ED8; --danger-deep:#B91C1C;
+  --log-text:#21262B;
+  --mono:"Cascadia Mono",Consolas,'Courier New',monospace;
+  --shadow:0 1px 2px rgba(15,23,42,.05);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);
+     font-family:'Segoe UI Variable','Segoe UI','Microsoft YaHei UI','Microsoft YaHei',sans-serif;
+     font-size:15px;line-height:1.5;display:flex;flex-direction:column;overflow:hidden}
+
+/* ---- header / tabs ---- */
+header{display:flex;align-items:center;gap:12px;padding:8px 16px;background:var(--surface);
+       border-bottom:1px solid var(--border);flex:0 0 auto}
+header h1{font-size:22px;margin:0;font-weight:700;letter-spacing:.2px;color:var(--text)}
+nav#tabs{display:flex;gap:4px;padding:6px 14px 0;background:var(--surface);
+         border-bottom:1px solid var(--border);flex:0 0 auto}
+nav#tabs button{display:inline-flex;align-items:center;gap:6px;border:none;background:transparent;
+                color:var(--text-mid);padding:8px 15px;font-size:14.5px;font-weight:600;
+                cursor:pointer;border-radius:8px 8px 0 0;font-family:inherit;
+                border-bottom:2px solid transparent;transition:color .15s,background .15s}
+nav#tabs button:hover{color:var(--text);background:var(--muted)}
+nav#tabs button.active{color:#fff;background:var(--primary);border-bottom-color:var(--primary)}
+.tab-ic{width:17px;height:17px;flex:0 0 auto;stroke:currentColor;fill:none;
+        stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+main{padding:12px 14px;flex:1 1 auto;min-height:0;display:flex}
+.tab{display:none;flex:1 1 auto;min-height:0;flex-direction:column;gap:10px}
+.tab.active{display:flex}
+#tab-about{overflow-y:auto}
+
+/* ---- cards ---- */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+      box-shadow:var(--shadow);padding:12px 16px;display:flex;flex-direction:column;
+      gap:9px;flex:0 0 auto}
+.row{display:flex;align-items:center;gap:10px;min-width:0}
+.row > .rowlabel{flex:0 0 92px;color:var(--text-mid);font-size:14px;font-weight:600}
+label{display:flex;align-items:center;gap:8px;font-size:14px;min-width:0}
+select{flex:1 1 auto;min-width:0;padding:7px 10px;border:1px solid var(--border);border-radius:8px;
+       background:#fff;color:var(--text);font-family:inherit;font-size:14px}
+select:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+button{padding:7px 16px;border:1px solid var(--border);border-radius:8px;background:#fff;
+       color:var(--text);cursor:pointer;font-size:15px;font-family:inherit;font-weight:600;
+       white-space:nowrap;flex:0 0 auto;transition:background .12s,border-color .12s,transform .08s}
+button:hover{background:var(--muted);border-color:var(--accent)}
+button:active{transform:translateY(1px)}
+button.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+button.primary:hover{background:var(--primary-hover);border-color:var(--primary-hover)}
+button:disabled{opacity:.45;cursor:not-allowed;background:#fff;border-color:var(--border);color:var(--text-mid);transform:none}
+button:disabled:hover{background:#fff;border-color:var(--border)}
+button.linklike{background:none;border:none;color:var(--accent);font-weight:600;
+                padding:3px 8px;font-size:13.5px}
+button.linklike:hover{background:none;text-decoration:underline}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hidden{display:none !important}
+
+/* ---- the log: inner scrollbar, fills leftover height ---- */
+.logcard{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+         padding:6px;flex:1 1 auto;min-height:0;display:flex;overflow:hidden}
+.logcard > pre{margin:0;flex:1 1 auto;min-height:0;height:100%;overflow-y:auto;overflow-x:hidden;
+               padding:8px 10px;font-family:var(--mono);font-size:12.5px;line-height:1.6;
+               white-space:pre-wrap;word-break:break-word;color:var(--log-text);
+               background:var(--bg);border-radius:8px}
+.logcard.short{flex:0 0 auto;height:136px;min-height:88px;max-height:168px}
+
+/* ---- discovery-completion checkbox (host only) ---- */
+.chk{cursor:pointer;user-select:none}
+.chk input{width:16px;height:16px;accent-color:var(--primary);cursor:pointer;flex:0 0 auto}
+
+/* ---- 关于 page: identity + diagnostic export ---- */
+.about-card{overflow-y:auto}
+.about-hero{display:flex;align-items:center;gap:14px;padding-bottom:6px}
+.about-mark{flex:0 0 auto;width:52px;height:52px;display:flex;align-items:center;justify-content:center;
+            font-size:28px;font-weight:800;color:#fff;background:var(--primary);border-radius:12px;
+            box-shadow:var(--shadow)}
+.about-name{font-size:19px;font-weight:700;color:var(--text)}
+.about-tagline{font-size:13px;color:var(--text-soft);margin-top:2px}
+.about-desc{margin:4px 0 2px;font-size:13.5px;line-height:1.65;color:var(--text-mid)}
+.about-meta{border-collapse:collapse;width:100%;font-size:13.5px}
+.about-meta th,.about-meta td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+.about-meta th{flex:0 0 auto;width:76px;color:var(--text-soft);font-weight:600}
+.about-meta td{color:var(--text)}
+.about-meta a{color:var(--accent);word-break:break-all}
+.about-meta a:hover{text-decoration:underline}
+.about-boundary{margin:8px 0 0;font-size:12.5px;color:var(--warning);background:var(--warning-bg);
+                border:1px solid var(--warning-border);border-radius:8px;padding:7px 10px}
+.diag-card{flex:0 0 auto}
+
+/* ---- peer discovery: NIC selector rows (always visible, tap-to-toggle) ----
+   One aligned row per adapter: ✓ + clean name + IP + priority badge + radio ring.
+   Built once on load / manual refresh; toggling only restyles the clicked row
+   (no DOM rebuild, no fresh powershell.exe -> no hitch on first tick).
+   The list scrolls internally when many adapters are present (7, 8 or more). */
+.iface-list{display:flex;flex-direction:column;gap:6px;max-height:250px;overflow-y:auto;padding-right:4px}
+.iface-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+           border:1px solid var(--border);border-radius:8px;background:#fff;
+           box-shadow:0 1px 2px rgba(15,23,42,.06);
+           padding:9px 12px;cursor:pointer;color:var(--text);font-family:inherit;
+           font-size:14px;font-weight:600;
+           transition:background .12s,border-color .12s,box-shadow .12s,transform .08s}
+.iface-row::before{content:"\2713";color:var(--accent);opacity:0;overflow:hidden;transition:opacity .12s}
+.iface-row.sel::before{opacity:1}
+.iface-row::after{content:"";width:18px;height:18px;border-radius:50%;flex:0 0 auto;
+                  border:2px solid var(--border);background:#fff;
+                  transition:background .12s,border-color .12s}
+.iface-row.sel::after{background:var(--accent);border-color:var(--accent)}
+.iface-row:hover{border-color:var(--accent);background:var(--muted)}
+.iface-row:active{transform:translateY(1px)}
+.iface-row.sel{background:var(--accent-soft);border-color:var(--accent)}
+.iface-row .nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.iface-row .ip{font-family:var(--mono);font-size:12.5px;color:var(--text-mid)}
+.iface-row.sel .ip{color:var(--text)}
+.iface-row .mt{font-size:11.5px;font-weight:600;color:var(--warning);background:var(--warning-bg);
+               border:1px solid var(--warning-border);border-radius:6px;padding:1px 6px;white-space:nowrap}
+
+/* 2026-11-22: the M5 warnings footer (#pd-warn) was removed by explicit project-lead
+   instruction (authorized M5 change, see the registration chain note in main.js). */
+.phase.err{background:var(--danger-bg);color:var(--danger)}
+.muted{color:var(--text-soft);font-size:12.5px}
+
+/* ---- peer discovery: result panel (devices + path quality) ----
+   D-6 fix: the card scrolls as ONE unit (overflow-y:auto) instead of clipping;
+   inner lists grow naturally, so tall content can never be cut off. */
+.pd-result{flex:1 1 auto;min-height:120px;display:flex;flex-direction:column;gap:8px;overflow-y:auto}
+.pd-result .row{flex:0 0 auto}
+.phase{font-size:13px;font-weight:600;padding:2px 10px;border-radius:12px;background:var(--chip-bg);
+       color:var(--chip-text);white-space:nowrap;font-variant-numeric:tabular-nums}
+.phase.on{background:var(--accent-soft);color:var(--accent-deep)}
+.phase.done{background:var(--ok-bg);color:var(--ok)}
+.dev-list{flex:0 0 auto;min-height:56px;display:flex;flex-direction:column;gap:6px}
+.dev-item{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;
+          background:var(--bg);border:1px solid var(--border);font-size:13.5px}
+.dev-item .dot{width:9px;height:9px;border-radius:50%;background:var(--ok);flex:0 0 auto}
+.dev-item .who{font-weight:600;flex:0 0 auto}
+.dev-item .ad{font-family:var(--mono);font-size:12px;color:var(--accent);flex:1 1 auto;min-width:0;
+              overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dev-item .secs{font-family:var(--mono);font-size:12px;color:var(--text-soft);flex:0 0 auto}
+.dev-list .empty,.path-table .empty{color:var(--text-soft);font-size:13px;padding:10px 2px}
+.path-table{flex:0 0 auto;display:flex;flex-direction:column;gap:4px}
+.path-row{display:grid;grid-template-columns:1.6fr .9fr .8fr .8fr .8fr .9fr;gap:8px;
+          font-family:var(--mono);font-size:12.5px;padding:5px 8px;border-radius:6px;
+          background:var(--bg);font-variant-numeric:tabular-nums}
+.path-row.head{background:none;color:var(--text-soft);font-family:inherit;font-size:11.5px;font-weight:600}
+.path-row.ok{background:var(--ok-bg)}
+.path-row.bad{background:var(--danger-bg);color:var(--danger-deep)}
+.rec{flex:0 0 auto;font-size:14px;font-weight:600;color:var(--ok);min-height:20px}
+.rec.none{color:var(--danger);font-weight:500}
+
+@media (prefers-reduced-motion: reduce){
+  *{transition:none !important}
+}

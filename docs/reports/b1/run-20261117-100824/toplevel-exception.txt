@@ -1,0 +1,3 @@
+﻿TOP-LEVEL EXCEPTION: System.Management.Automation.MethodInvocationException: Exception calling "ReadAllBytes" with "1" argument(s): "Could not find file 'C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\docs\reports\b1\run-20261117-100824\agent\real-page-02.bin'."
+at: C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\civlink\run-b1-realcap-selftest.ps1:279
+at <ScriptBlock>, C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\civlink\run-b1-realcap-selftest.ps1: line 279

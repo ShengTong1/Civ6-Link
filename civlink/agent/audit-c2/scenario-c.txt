@@ -1,0 +1,18 @@
+civlink client (C2) self-test - scenario C
+  PASS C1 module reaches state 1                                  
+  PASS C2 initError == 0 (config accepted)                        
+counters: sent=10 ignored=4 sendFail=0 initError=0 bind62056=0 sockOverflow=0 scatterGather=0 session=38950620789144
+ifprobe: before=0 after=1
+  PASS C3 all 14 sends returned 4 bytes                           
+  PASS C4 sent == 10 (one per discovery send from a BOUND socket) 
+  PASS C5 ignoredNonDiscovery == 4 (ordinary sends untouched)     
+  PASS C6 sendFail == 0 (setsockopt accepted the index)           
+  PASS C7 non-C2 counters stay 0 (rejectOversize/observedFrames/cvlh2) 
+  PASS C8 no 62056 socket was bound by the DLL                    
+  PASS C9 shutdown returns 0 (clean drain)                        
+  PASS C10 second shutdown reports already-down (1)               
+  PASS C11 IP_UNICAST_IF was unset before the burst               
+  PASS C12 IP_UNICAST_IF installed on the socket after the burst (real setsockopt) 
+checks: 12 failed=0
+NOTE: bookkeeping only - the actual egress adapter is NOT verified here
+      (needs a second machine + capture, see M0C-C2-DESIGN-20261118.md 3.3)

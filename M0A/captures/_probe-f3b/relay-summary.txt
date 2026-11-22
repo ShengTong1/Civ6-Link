@@ -1,0 +1,25 @@
+civlink-relay 0.1.0 - F3-B relay summary
+run time          : 06:26:47.164
+listen            : 127.0.0.1:34724 for 1.4 s
+datagrams         : 2
+bytes in          : 40
+bad envelope      : 0
+control frames    : 2
+registers         : 2
+forward requests  : 0
+forwarded         : 0
+forward bytes     : 0
+forward fail      : 0
+no route          : 0
+self drop         : 0
+reconciliation    : forwarded + no_route + self_drop + forward_fail = 0 == forward_requests = 0
+peers seen        : 1
+
+notes
+- This Relay sees PLAINTEXT: the F3 prototype has no encryption (design section 4.1).
+- It does not decrypt, rewrite, retransmit or reorder; one input envelope produces at
+most one output datagram, and the payload bytes are copied unchanged.
+- `hash` is FNV-1a 64 of the payload, for three-way byte comparison with the sender
+and the receiving peer. It is not a security hash.
+- Prototype only: not the product Relay, no identity/authentication, no rate limit
+beyond loopback testing, no L1/L2 Noise keys (those are M0-B).

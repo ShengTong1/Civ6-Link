@@ -1,0 +1,2 @@
+civlink_ctl v0.2.0-f2 - CivLink F1 discovery hook controller
+[!] --iface '10.255.255.1' is not a live local IPv4 interface - refusing

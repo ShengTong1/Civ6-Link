@@ -1,0 +1,1 @@
+﻿B1-REALCAP-SELFTEST: FAIL (12 checks, 5 failures)

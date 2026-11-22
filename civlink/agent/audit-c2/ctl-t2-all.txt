@@ -1,0 +1,11 @@
+civlink_ctl v0.2.0-f2 - CivLink F1 discovery hook controller
+[+] interface selected: ALL (no pinning, let the routing table decide)
+[*] target pid=36900
+      pid=36900 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+[*] client iface config path: C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\civlink\agent\audit-c2\cfg\client-iface.txt
+[*] resolved by: env override (CIVLINK_CLIENT_IFACE_FILE)
+[*] note: the DLL reads this from the GAME process environment, so an env override
+    set in this shell does NOT reach an injected game - use the default path there
+[+] client iface config written: ALL -> C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\civlink\agent\audit-c2\cfg\client-iface.txt
+[!] SeDebugPrivilege not granted - run elevated if the target is elevated
+[!] OpenProcess failed err=5

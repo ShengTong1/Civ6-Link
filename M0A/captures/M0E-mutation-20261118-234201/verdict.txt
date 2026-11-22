@@ -1,0 +1,15 @@
+M0-E MUTATION TEST
+mutations applied : 3/3
+mutations caught  : 2/3
+source restored   : True
+exe restored      : False
+restored selftest : PASS
+
+Each mutation must be caught by the check it targets; otherwise the self-test
+cannot tell a working completion path from a broken one.
+
+pristine source sha256 : 9617B5EE181DEB666F7BD02AA629717FFA26ED95252EE77493C3026760BCC615
+pristine exe sha256    : 1642EC406B494A4BCDAD0CF2CD2FC6BA36E6FB0F0792F774FA7B1CD2E6FDA999
+M1  applied=True  caught=True  CA74E039E5B009A11BA31F874195A18D427F56E75D31B7743CA57065344965C5     - silent target -> client received nothing (fail-closed)
+M2  applied=True  caught=True  241147DA3C776BF2B82FB2C09F7F7719790B48B41E6676E3628E4879C3DABDB8     - every page came from the probed port :62902
+M3  applied=True  caught=False  4135D9CB699225429F09F68441868A05ABC7D483FCA289F3973696147533C064  

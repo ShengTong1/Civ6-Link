@@ -1,0 +1,1 @@
+[peer-discover] ifaces=2 discover_port=63010 probe_port=63011 interval=3000ms include_vpn=false

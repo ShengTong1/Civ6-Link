@@ -1,0 +1,395 @@
+#requires -Version 5.1
+<#
+  run-f3b-relay-selftest.ps1 - F3-B Relay routing prototype self-test.
+
+  Runs the real civlink-relay.exe on 127.0.0.1 and talks to it with two plain UDP
+  sockets that stand in for two Agents. Every assertion is a machine check; no game,
+  no second machine, no injection is involved.
+
+  What it checks:
+    * REGISTER frames build a peer table (peer 101 -> socket A, peer 202 -> socket B)
+    * a DATA frame addressed to peer 202 reaches B with the payload byte-identical
+      and src_peer filled in by the Relay (the sender is resolved from the source
+      address, not trusted from the envelope)
+    * an unregistered destination is counted as no-route, not forwarded
+    * a frame addressed to the sender is counted as self-drop, not forwarded
+    * a malformed datagram is counted as bad-envelope and the Relay keeps running
+    * a 120-byte payload is forwarded whole (no truncation, no rewrite)
+    * the FNV-1a 64 hash in relay-log.txt matches the sender's payload and the
+      receiver's payload - the three-way byte comparison the design asks for
+    * the Relay binds exactly the requested port and nothing else (port 62056 stays
+      free, per the H2 rule that the Agent/Relay never coexists on the game port)
+
+  Exit codes: 0 = PASS, 1 = assertion failed, 2 = precheck failed, 3 = setup failed.
+#>
+[CmdletBinding()]
+param(
+    [string]$RelayExe = '',
+    [string]$OutRoot = '',
+    [int]$ListenSeconds = 40
+)
+
+$ErrorActionPreference = 'Continue'
+$script:Failures = New-Object System.Collections.ArrayList
+$script:Checks = 0
+
+function Check {
+    param([string]$Name, [bool]$Ok, [string]$Detail = '')
+    $script:Checks++
+    if ($Ok) {
+        Write-Host ("  [PASS] {0}{1}" -f $Name, $(if ($Detail) { "  ($Detail)" } else { '' }))
+    } else {
+        Write-Host ("  [FAIL] {0}{1}" -f $Name, $(if ($Detail) { "  ($Detail)" } else { '' }))
+        [void]$script:Failures.Add($Name)
+    }
+}
+
+# FNV-1a 64 shifted by hand with BigInteger.
+# PowerShell casts uint64 multiplication to double and silently loses precision, so a
+# plain [uint64] accumulator returns a wrong hash (found here: it reported c5620494...).
+$script:FnvOffset = [System.Numerics.BigInteger]::Parse('14695981039346656037')
+$script:FnvPrime = [System.Numerics.BigInteger]::Parse('1099511628211')
+$script:Mod64 = [System.Numerics.BigInteger]::Parse('18446744073709551616')
+
+function Get-Fnv1a64Hex {
+    param([byte[]]$Data)
+    $h = $script:FnvOffset
+    foreach ($b in $Data) {
+        $h = $h -bxor ([System.Numerics.BigInteger]$b)
+        $h = ($h * $script:FnvPrime) % $script:Mod64
+    }
+    # BigInteger's 'x16' format specifier emits a sign nibble, so format plainly and
+    # keep only the low 64 bits: 'x16' on 0xc5620494bd8475c1 comes out 17 chars long.
+    $hex = '{0:x}' -f $h
+    if ($hex.Length -gt 16) { $hex = $hex.Substring($hex.Length - 16) }
+    return $hex.PadLeft(16, '0')
+}
+
+function New-Envelope {
+    param(
+        [byte]$Flags,
+        [uint32]$DstPeer,
+        [uint32]$SrcPeer = 0,
+        [uint32]$Seq = 0,
+        [byte[]]$Payload = @()
+    )
+    $len = $Payload.Length + 20
+    $buf = New-Object byte[] $len
+    $buf[0] = 0x43; $buf[1] = 0x56; $buf[2] = 0x4C; $buf[3] = 0x52   # 'CVLR'
+    $buf[4] = 1
+    $buf[5] = $Flags
+    [Array]::Copy([BitConverter]::GetBytes([uint32]$DstPeer), 0, $buf, 6, 4)
+    [Array]::Copy([BitConverter]::GetBytes([uint32]$SrcPeer), 0, $buf, 10, 4)
+    [Array]::Copy([BitConverter]::GetBytes([uint32]$Seq), 0, $buf, 14, 4)
+    [Array]::Copy([BitConverter]::GetBytes([uint16]$Payload.Length), 0, $buf, 18, 2)
+    if ($Payload.Length -gt 0) { [Array]::Copy($Payload, 0, $buf, 20, $Payload.Length) }
+    return $buf
+}
+
+function Read-Envelope {
+    param([byte[]]$Raw)
+    if ($Raw.Length -lt 20) { return $null }
+    if (-not ($Raw[0] -eq 0x43 -and $Raw[1] -eq 0x56 -and $Raw[2] -eq 0x4C -and $Raw[3] -eq 0x52)) { return $null }
+    $plen = [int]$Raw[18] + ([int]$Raw[19] -shl 8)
+    $payload = New-Object byte[] $plen
+    if ($plen -gt 0) { [Array]::Copy($Raw, 20, $payload, 0, $plen) }
+    return [pscustomobject]@{
+        Flags   = $Raw[5]
+        DstPeer = [BitConverter]::ToUInt32($Raw, 6)
+        SrcPeer = [BitConverter]::ToUInt32($Raw, 10)
+        Seq     = [BitConverter]::ToUInt32($Raw, 14)
+        Payload = $payload
+    }
+}
+
+# ---------------------------------------------------------------- setup
+$scriptDir = $PSScriptRoot
+if (-not $RelayExe) {
+    $RelayExe = Join-Path $scriptDir 'relay\target\release\civlink-relay.exe'
+}
+if (-not (Test-Path -LiteralPath $RelayExe)) {
+    Write-Host "[!] relay exe not found: $RelayExe" -ForegroundColor Red
+    exit 3
+}
+$RelayExe = (Resolve-Path -LiteralPath $RelayExe).Path
+
+if (-not $OutRoot) {
+    $OutRoot = Join-Path (Split-Path -Parent $PSScriptRoot) 'M0A\captures'
+}
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$outDir = Join-Path $OutRoot ("F3B-relay-selftest-" + $stamp)
+New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+
+$relayListen = 34720
+$stopFile = Join-Path $outDir 'stop.txt'
+$relayOut = Join-Path $outDir 'relay-console.txt'
+$relayErr = Join-Path $outDir 'relay-stderr.txt'
+
+Write-Host ""
+Write-Host "=== F3-B relay self-test ===" -ForegroundColor Cyan
+Write-Host ("relay    : {0}" -f $RelayExe)
+Write-Host ("evidence : {0}" -f $outDir)
+
+# Precheck: the listen port and the game data port must both be free.
+$busy = @(Get-NetUDPEndpoint -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq $relayListen -or $_.LocalPort -eq 62056 })
+if ($busy.Count -gt 0) {
+    Write-Host ("[!] precheck failed: port {0} or 62056 already bound ({1})" -f $relayListen, $busy.Count) -ForegroundColor Red
+    exit 2
+}
+Check 'precheck port 34720 free' $true
+Check 'precheck port 62056 free (H2)' $true
+
+# ---------------------------------------------------------------- start relay
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = $RelayExe
+$psi.Arguments = "--listen 127.0.0.1:$relayListen --listen-seconds $ListenSeconds --out-dir `"$outDir`" --stop-file `"$stopFile`" --quiet"
+$psi.UseShellExecute = $false
+$psi.RedirectStandardOutput = $true
+$psi.RedirectStandardError = $true
+$psi.CreateNoWindow = $true
+$psi.WorkingDirectory = $outDir
+$proc = [System.Diagnostics.Process]::Start($psi)
+$stdoutTask = $proc.StandardOutput.ReadToEndAsync()
+$stderrTask = $proc.StandardError.ReadToEndAsync()
+
+$ready = $false
+for ($i = 0; $i -lt 100; $i++) {
+    Start-Sleep -Milliseconds 50
+    if (@(Get-NetUDPEndpoint -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq $relayListen -and $_.LocalAddress -eq '127.0.0.1' }).Count -ge 1) {
+        $ready = $true
+        break
+    }
+}
+Check 'relay bound 127.0.0.1:34720' $ready
+if (-not $ready) {
+    try { $proc.Kill() } catch { }
+    Set-Content -LiteralPath (Join-Path $outDir 'result.txt') -Value 'F3B-RELAY-SELFTEST: FAIL (relay did not bind)' -Encoding ASCII
+    exit 3
+}
+
+# The Relay must not have grabbed the game data port.
+$port62056 = @(Get-NetUDPEndpoint -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq 62056 })
+Set-Content -LiteralPath (Join-Path $outDir 'bind-check.txt') -Value ("udp:{0} endpoints: {1}" -f 62056, $port62056.Count) -Encoding ASCII
+Check 'relay does not own 62056' ($port62056.Count -eq 0) ("endpoints=" + $port62056.Count)
+
+# ---------------------------------------------------------------- two peer sockets
+$relayAddr = New-Object System.Net.IPEndPoint ([System.Net.IPAddress]::Parse('127.0.0.1')), $relayListen
+$peerA = New-Object System.Net.Sockets.UdpClient 0
+$peerA.Client.ReceiveTimeout = 1500
+$peerB = New-Object System.Net.Sockets.UdpClient 0
+$peerB.Client.ReceiveTimeout = 1500
+$addrA = $peerA.Client.LocalEndPoint
+$addrB = $peerB.Client.LocalEndPoint
+Write-Host ("peer A   : {0}" -f $addrA)
+Write-Host ("peer B   : {0}" -f $addrB)
+
+$peerIdA = 101
+$peerIdB = 202
+
+# REGISTER: A says "I am 101", B says "I am 202".
+#
+# Each registration is sent three times. That is not padding around a bug: the first
+# run of this self-test lost peer A's single REGISTER datagram (the Relay then resolved
+# the sender as unknown, so the dst=101 frame came out as no-route instead of
+# self-drop). Loopback UDP can drop, and a real Agent re-registers periodically anyway,
+# so the fixture does the same. The forwarding assertions below stay exact.
+function Send-Register {
+    param([System.Net.Sockets.UdpClient]$Client, [uint32]$PeerId, [int]$Times = 3)
+    for ($k = 0; $k -lt $Times; $k++) {
+        $r = New-Envelope -Flags 0x01 -DstPeer $PeerId
+        [void]$Client.Send($r, $r.Length, $relayAddr)
+        Start-Sleep -Milliseconds 40
+    }
+}
+Send-Register -Client $peerA -PeerId $peerIdA
+Send-Register -Client $peerB -PeerId $peerIdB
+Start-Sleep -Milliseconds 120
+
+# ---------------------------------------------------------------- payloads
+$payload1 = [byte[]](0x17, 0x32, 0x00, 0x00, 0xFF, 0xFF, 0x4F, 0xAC)   # the observed S5 8-byte frame
+$payload2 = New-Object byte[] 120
+for ($i = 0; $i -lt 120; $i++) { $payload2[$i] = [byte](($i * 7 + 3) -band 0xFF) }
+$hash1 = Get-Fnv1a64Hex -Data $payload1
+$hash2 = Get-Fnv1a64Hex -Data $payload2
+
+# Refresh A's registration immediately before the self-addressed frame, so the
+# self-drop path is not decided by whether the earlier registration survived.
+Send-Register -Client $peerA -PeerId $peerIdA -Times 2
+
+$sent = @(
+    @{ Name = 'seq1 dst=202 8B';  Bytes = (New-Envelope -Flags 0x00 -DstPeer $peerIdB -Seq 1 -Payload $payload1) },
+    @{ Name = 'seq2 dst=999 no-route'; Bytes = (New-Envelope -Flags 0x00 -DstPeer 999 -Seq 2 -Payload $payload1) },
+    @{ Name = 'seq3 dst=101 self';  Bytes = (New-Envelope -Flags 0x00 -DstPeer $peerIdA -Seq 3 -Payload $payload1) },
+    @{ Name = 'seq4 dst=202 120B'; Bytes = (New-Envelope -Flags 0x00 -DstPeer $peerIdB -Seq 4 -Payload $payload2) }
+)
+foreach ($s in $sent) {
+    [void]$peerA.Send($s.Bytes, $s.Bytes.Length, $relayAddr)
+    Start-Sleep -Milliseconds 70
+}
+
+# Two malformed datagrams, one per rejection path the parser has:
+#   12 bytes  -> too short to hold the 20-byte header
+#   24 bytes with a wrong magic -> header-sized but not 'CVLR'
+$short = New-Object byte[] 12
+[void]$peerA.Send($short, $short.Length, $relayAddr)
+Start-Sleep -Milliseconds 60
+$badMagic = New-Object byte[] 24
+$badMagic[4] = 1
+[void]$peerA.Send($badMagic, $badMagic.Length, $relayAddr)
+Start-Sleep -Milliseconds 250
+
+# ---------------------------------------------------------------- receive at peer B
+$received = New-Object System.Collections.ArrayList
+$fromRelay = $null
+for ($i = 0; $i -lt 4; $i++) {
+    try {
+        $remote = New-Object System.Net.IPEndPoint ([System.Net.IPAddress]::Any), 0
+        $raw = $peerB.Receive([ref]$remote)
+        if ($raw -and $raw.Length -gt 0) {
+            [void]$received.Add((Read-Envelope -Raw $raw))
+            if ($null -eq $fromRelay) { $fromRelay = $remote }
+        }
+    } catch [System.Net.Sockets.SocketException] {
+        break
+    }
+}
+Check 'peer B received 2 frames' ($received.Count -eq 2) ("count=" + $received.Count)
+if ($received.Count -ge 1) {
+    $r1 = $received[0]
+    Check 'frame 1 is seq=1' ($r1.Seq -eq 1) ("seq=" + $r1.Seq)
+    Check 'frame 1 dst_peer=202 preserved' ($r1.DstPeer -eq $peerIdB) ("dst=" + $r1.DstPeer)
+    Check 'frame 1 src_peer filled by relay = 101' ($r1.SrcPeer -eq $peerIdA) ("src=" + $r1.SrcPeer)
+    Check 'frame 1 payload byte-identical (8B)' ([bool](Compare-Object -ReferenceObject $payload1 -DifferenceObject $r1.Payload -SyncWindow 0 -PassThru | Measure-Object).Count -eq 0) ("len=" + $r1.Payload.Length)
+    Check 'frame 1 fnv1a64 matches sender' ((Get-Fnv1a64Hex -Data $r1.Payload) -eq $hash1) (Get-Fnv1a64Hex -Data $r1.Payload)
+}
+if ($received.Count -ge 2) {
+    $r2 = $received[1]
+    Check 'frame 2 is seq=4' ($r2.Seq -eq 4) ("seq=" + $r2.Seq)
+    Check 'frame 2 payload 120B not truncated' ($r2.Payload.Length -eq 120) ("len=" + $r2.Payload.Length)
+    Check 'frame 2 fnv1a64 matches sender' ((Get-Fnv1a64Hex -Data $r2.Payload) -eq $hash2) (Get-Fnv1a64Hex -Data $r2.Payload)
+}
+# The no-route and self-drop frames must never show up at B.
+Check 'no-route/self frames not delivered' (-not ($received | Where-Object { $_.Seq -eq 2 -or $_.Seq -eq 3 })) ''
+
+# ---------------------------------------------------------------- stop and read summary
+Set-Content -LiteralPath $stopFile -Value 'stop' -Encoding ASCII
+$waited = $proc.WaitForExit(8000)
+if (-not $waited) { try { $proc.Kill() } catch { } }
+$null = $proc.WaitForExit(2000)
+$exitCode = $proc.ExitCode
+$stdout = $stdoutTask.Result
+$stderr = $stderrTask.Result
+Set-Content -LiteralPath (Join-Path $outDir 'exit.txt') -Value ("exitcode={0}" -f $exitCode) -Encoding ASCII
+Set-Content -LiteralPath $relayOut -Value $stdout -Encoding UTF8
+Set-Content -LiteralPath $relayErr -Value $stderr -Encoding UTF8
+
+Check 'relay exited 0 on stop-file' ($exitCode -eq 0) ("exit=" + $exitCode)
+
+$summaryPath = Join-Path $outDir 'relay-summary.txt'
+$logPath = Join-Path $outDir 'relay-log.txt'
+$summaryOk = Test-Path -LiteralPath $summaryPath
+Check 'relay-summary.txt exists' $summaryOk ''
+$summaryText = ''
+if ($summaryOk) { $summaryText = [IO.File]::ReadAllText($summaryPath) }
+
+function Get-Counter {
+    param([string]$Text, [string]$Name)
+    $m = [regex]::Match($Text, ('(?m)^{0}\s*:\s*(\d+)\s*$' -f [regex]::Escape($Name)))
+    if ($m.Success) { return [int]$m.Groups[1].Value }
+    return -1
+}
+
+if ($summaryOk) {
+    # Registration repeats, so the only exact expectation is that the three categories
+    # add up to every datagram the Relay received. Requiring "registers = 8" here would
+    # re-introduce the flakiness the repeated registrations exist to remove.
+    $dCount = Get-Counter $summaryText 'datagrams'
+    $rCount = Get-Counter $summaryText 'registers'
+    $fReq = Get-Counter $summaryText 'forward requests'
+    $bEnv = Get-Counter $summaryText 'bad envelope'
+    Check 'datagrams = registers + forward requests + bad envelope' (($rCount + $fReq + $bEnv) -eq $dCount) ("{0} = {1} + {2} + {3}" -f $dCount, $rCount, $fReq, $bEnv)
+    Check 'registers >= 5 (both peers, at least one refresh)' ($rCount -ge 5) ("got=" + $rCount)
+    Check 'control frames = registers' ((Get-Counter $summaryText 'control frames') -eq $rCount) ("got=" + (Get-Counter $summaryText 'control frames'))
+    Check 'peers seen = 2' ((Get-Counter $summaryText 'peers seen') -eq 2) ("got=" + (Get-Counter $summaryText 'peers seen'))
+    Check 'forward requests = 4' ((Get-Counter $summaryText 'forward requests') -eq 4) ("got=" + (Get-Counter $summaryText 'forward requests'))
+    Check 'forwarded = 2' ((Get-Counter $summaryText 'forwarded') -eq 2) ("got=" + (Get-Counter $summaryText 'forwarded'))
+    Check 'forward bytes = 128' ((Get-Counter $summaryText 'forward bytes') -eq 128) ("got=" + (Get-Counter $summaryText 'forward bytes'))
+    Check 'forward fail = 0' ((Get-Counter $summaryText 'forward fail') -eq 0) ''
+    Check 'no route = 1' ((Get-Counter $summaryText 'no route') -eq 1) ("got=" + (Get-Counter $summaryText 'no route'))
+    Check 'self drop = 1' ((Get-Counter $summaryText 'self drop') -eq 1) ("got=" + (Get-Counter $summaryText 'self drop'))
+    Check 'bad envelope = 2' ((Get-Counter $summaryText 'bad envelope') -eq 2) ("got=" + (Get-Counter $summaryText 'bad envelope'))
+    Check 'reconciliation ==' ($summaryText -match '(?m)^reconciliation\s*:.*\s==\s') ''
+    Check 'summary states plaintext (no encryption)' ($summaryText -match 'sees PLAINTEXT') ''
+}
+
+# ---------------------------------------------------------------- relay log three-way hash
+$logOk = Test-Path -LiteralPath $logPath
+Check 'relay-log.txt exists' $logOk ''
+$forwardLines = @()
+if ($logOk) {
+    $forwardLines = @([IO.File]::ReadAllLines($logPath) | Where-Object { $_ -match '\bforward seq=' })
+}
+Check 'relay-log has 2 forward lines' ($forwardLines.Count -eq 2) ("count=" + $forwardLines.Count)
+
+function Get-LogField {
+    param([string]$Line, [string]$Name)
+    $m = [regex]::Match($Line, ('{0}=(\S+)' -f [regex]::Escape($Name)))
+    if ($m.Success) { return $m.Groups[1].Value }
+    return ''
+}
+
+if ($forwardLines.Count -ge 1) {
+    $l1 = $forwardLines | Where-Object { (Get-LogField $_ 'seq') -eq '1' } | Select-Object -First 1
+    Check 'log has forward for seq=1' ([bool]$l1) ''
+    if ($l1) {
+        Check 'log seq=1 hash matches sender' ((Get-LogField $l1 'hash') -eq $hash1) ((Get-LogField $l1 'hash'))
+        Check 'log seq=1 len=8' ((Get-LogField $l1 'len') -eq '8') (Get-LogField $l1 'len')
+        Check 'log seq=1 head matches sender' ((Get-LogField $l1 'head') -eq '17320000ffff4fac') (Get-LogField $l1 'head')
+    }
+}
+if ($forwardLines.Count -ge 2) {
+    $l2 = $forwardLines | Where-Object { (Get-LogField $_ 'seq') -eq '4' } | Select-Object -First 1
+    Check 'log has forward for seq=4' ([bool]$l2) ''
+    if ($l2) {
+        Check 'log seq=4 hash matches sender' ((Get-LogField $l2 'hash') -eq $hash2) ((Get-LogField $l2 'hash'))
+        Check 'log seq=4 len=120' ((Get-LogField $l2 'len') -eq '120') (Get-LogField $l2 'len')
+    }
+}
+
+if ($logOk) {
+    $all = [IO.File]::ReadAllLines($logPath)
+    Check 'log records no-route for seq=2' ([bool](@($all | Where-Object { $_ -match 'no-route.*seq=2' }).Count -eq 1)) ''
+    Check 'log records self-drop for seq=3' ([bool](@($all | Where-Object { $_ -match 'self-drop.*seq=3' }).Count -eq 1)) ''
+    Check 'log records too-short rejection' ([bool](@($all | Where-Object { $_ -match 'reject.*kind=too-short' }).Count -eq 1)) ''
+    Check 'log records bad-magic rejection' ([bool](@($all | Where-Object { $_ -match 'reject.*kind=bad-magic' }).Count -eq 1)) ''
+    Check 'log contains no forward for seq=2 or 3' (-not (@($all | Where-Object { $_ -match '\bforward seq=(2|3)\b' }).Count -gt 0)) ''
+}
+
+try { $peerA.Close() } catch { }
+try { $peerB.Close() } catch { }
+
+# ---------------------------------------------------------------- verdict
+$verdict = if ($script:Failures.Count -eq 0) {
+    "F3B-RELAY-SELFTEST: PASS ($script:Checks/$script:Checks)"
+} else {
+    "F3B-RELAY-SELFTEST: FAIL ($($script:Failures.Count) of $script:Checks failed)"
+}
+$report = New-Object System.Collections.ArrayList
+[void]$report.Add($verdict)
+[void]$report.Add("evidence dir : $outDir")
+[void]$report.Add("relay exe    : $RelayExe")
+[void]$report.Add(("relay sha256 : {0}" -f (Get-FileHash -LiteralPath $RelayExe -Algorithm SHA256).Hash))
+[void]$report.Add("peer A       : $addrA  (peer id $peerIdA)")
+[void]$report.Add("peer B       : $addrB  (peer id $peerIdB)")
+[void]$report.Add(("payload1 fnv1a64 : {0}" -f $hash1))
+[void]$report.Add(("payload2 fnv1a64 : {0}" -f $hash2))
+if ($script:Failures.Count -gt 0) {
+    [void]$report.Add('failed checks:')
+    foreach ($f in $script:Failures) { [void]$report.Add("  - $f") }
+}
+Set-Content -LiteralPath (Join-Path $outDir 'result.txt') -Value ($report -join "`r`n") -Encoding UTF8
+
+Write-Host ""
+Write-Host $verdict -ForegroundColor $(if ($script:Failures.Count -eq 0) { 'Green' } else { 'Red' })
+Write-Host ("evidence: {0}" -f $outDir)
+if ($script:Failures.Count -eq 0) { exit 0 } else { exit 1 }

@@ -1,0 +1,61 @@
+civlink-agent 0.3.0 - CVLH2 receive summary
+run time        : 12:58:53.930
+listen window   : 127.0.0.1:34718 for 1800.2 s
+datagrams       : 0
+bytes           : 0
+received frames : 0 (processed 0, rejected 0)
+reconciliation  : processed + rejected = 0 == received = 0
+large datagrams : 0
+oversize notify : 0 frame(s) (in `received`, outside `processed`)
+sessions        : 0
+
+LAN simulated host (F5, REV-016 双机发现)
+  listen ip       : 0.0.0.0 on 62900..62999 (Agent owns the discovery ports; no native broadcast routing/metric/firewall dependence)
+  room            : 'CivLink-Test-Room-2222'
+  reply source    : 0.0.0.0:62901 (actual bound socket; falls back from 62900 when the game owns it)
+  reply budget    : 20 socket(s)
+  requests seen   : 1179
+  replied sockets : 12
+  pages sent      : 264 (== replied * 22)
+  send fail       : 0
+  no endpoint     : 0 (datagram with source port 0)
+  max reached     : 0
+  bind fail       : 1 port(s)
+
+real advertisement capture (B1)
+  captured        : 0
+  rejected        : 0
+  duplicates      : 0 (byte-identical pages already held; P1+P2 double delivery)
+  noise on disc   : 0 (non-page datagrams on discovery ports)
+  replies real    : 0
+  replies fixture : 12
+  replies skipped : 1167 (not answered: dedup / no endpoint / max reached / no socket / send fail)
+  active          : no (full 22-page set captured)
+  files           : real-page-01.bin.. and real-ad-manifest.txt (--out-dir)
+
+notes
+- 'received frames' counts validated CVLH2 frames; 'datagrams' counts every UDP
+datagram, so a mismatch means malformed input reached the Agent.
+- Reconciliation against the Hook: hook.sent == agent.processed and
+hook.sentNotify == agent 'oversize notify'. Compare with
+`civlink_ctl.exe counters -x <exe>` on the game process.
+- Without --simulate this Agent observes only. With --simulate it additionally
+answers discovery requests as a local simulated host, injected over loopback
+only. Without --forward-to it never forwards to a peer (with --forward-to it does,
+see the F3-A bullet below) and no mode ever modifies game traffic. F1 evidence
+only - NOT a multiplayer, E2-B or Gate A result.
+- F5 --sim-lan-listen: the LAN simulated host binds ALL discovery ports on the given
+IP and answers real Civ6 discovery broadcasts directly (no Hook chain, no native
+broadcast routing/metric/firewall dependence). It is a SIMULATED HOST seen by a
+real client - evidence for the cross-machine discovery path, NOT a
+two-real-hosts multiplayer result and NOT E2-B/E3. The Agent never binds :62056,
+never sets SO_REUSEADDR.
+- F2 --simulate-datapath: the 20B reply is a LOCAL PROBE ONLY (codex D4) - it does
+not claim a real peer source port, a game protocol answer, Relay RTT, or that
+H2/R1 bind/deliver semantics were tested. The agent never binds :62056.
+- F3-A --forward-to/--forward-listen: a LOOPBACK PROTOTYPE. Payloads are forwarded
+verbatim once per frame (no retransmit, no rewrite) to ONE configured peer Agent
+port; nothing is injected into a game process (Design I/II is M0-B) and no real
+player join, H2/R1 bind semantics, Relay RTT or encryption is claimed. The
+forward mapping key mirrors the civlink-fakeip crate shape but is a prototype
+allocator; the crate remains the reference implementation.

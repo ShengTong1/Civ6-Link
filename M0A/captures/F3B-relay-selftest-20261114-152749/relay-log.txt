@@ -1,0 +1,24 @@
+# civlink-relay 0.1.0 - F3-B routing prototype: forward by dst_peer, payload verbatim
+07:27:51.183 register peer=101 from=127.0.0.1:52135 (peers known: 1)
+07:27:51.239 register peer=101 from=127.0.0.1:52135 (peers known: 1)
+07:27:51.285 register peer=101 from=127.0.0.1:52135 (peers known: 1)
+07:27:51.332 register peer=202 from=127.0.0.1:52136 (peers known: 2)
+07:27:51.378 register peer=202 from=127.0.0.1:52136 (peers known: 2)
+07:27:51.425 register peer=202 from=127.0.0.1:52136 (peers known: 2)
+07:27:51.602 register peer=101 from=127.0.0.1:52135 (peers known: 2)
+07:27:51.657 register peer=101 from=127.0.0.1:52135 (peers known: 2)
+07:27:51.711 forward seq=1 src_peer=101 dst_peer=202 len=8 hash=c5620494bd8475c1 head=17320000ffff4fac -> 127.0.0.1:52136
+07:27:51.795 no-route seq=2 dst_peer=999 from=127.0.0.1:52135
+07:27:51.873 self-drop seq=3 peer=101 (dst == sender)
+07:27:51.964 forward seq=4 src_peer=101 dst_peer=202 len=120 hash=b80f7e942a2daa55 head=030a11181f262d34 -> 127.0.0.1:52136
+07:27:52.044 reject len=12 kind=too-short from=127.0.0.1:52135
+07:27:52.119 reject len=24 kind=bad-magic from=127.0.0.1:52135
+07:27:52.181 reject len=24 kind=bad-version from=127.0.0.1:52135
+07:27:52.243 reject len=24 kind=payload-too-large from=127.0.0.1:52135
+07:27:52.305 reject len=60 kind=truncated from=127.0.0.1:52135
+07:27:52.368 reject unknown-flags=0x02 from=127.0.0.1:52135
+07:27:52.436 reject len=5000 kind=payload-too-large from=127.0.0.1:52135
+07:27:53.656 register peer=202 from=127.0.0.1:52136 (peers known: 2)
+07:27:53.700 register peer=202 from=127.0.0.1:52136 (peers known: 2)
+07:27:53.747 forward seq=5 src_peer=202 dst_peer=101 len=8 hash=c6c9f694beb606fd head=17320000ffff35ba -> 127.0.0.1:52135
+07:27:54.012 drop seq=91 from=127.0.0.1:52137 (unregistered source; envelope src_peer=303 not trusted) len=4

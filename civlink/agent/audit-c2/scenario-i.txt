@@ -1,0 +1,10 @@
+civlink client (C2) self-test - scenario I
+  PASS I1 module reaches state 1                                  
+counters: sent=0 ignored=0 sendFail=0 initError=0 bind62056=0 sockOverflow=16 scatterGather=0 session=156838894324584
+  PASS I2 the test really opened more sockets than the table can hold 
+  PASS I3 sockTableOverflow > 0 (a full table is counted, not silent) 
+  PASS I4 at least 64 sockets were tracked before the first overflow 
+  PASS I5 shutdown returns 0                                      
+checks: 5 failed=0
+NOTE: bookkeeping only - the actual egress adapter is NOT verified here
+      (needs a second machine + capture, see M0C-C2-DESIGN-20261118.md 3.3)

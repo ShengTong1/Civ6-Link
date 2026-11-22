@@ -1,0 +1,10 @@
+civlink client (C2) self-test - scenario G
+  PASS G1 module still reaches state 1 (fail-open)                
+  PASS G2 initError == 12 (interface unavailable)                 
+counters: sent=0 ignored=8 sendFail=0 initError=12 bind62056=0 sockOverflow=0 scatterGather=0 session=158745856092976
+  PASS G3 all 8 sends returned 4 bytes (no packet dropped)        
+  PASS G4 sent == 0 (degraded to ALL)                             
+  PASS G5 shutdown returns 0                                      
+checks: 5 failed=0
+NOTE: bookkeeping only - the actual egress adapter is NOT verified here
+      (needs a second machine + capture, see M0C-C2-DESIGN-20261118.md 3.3)

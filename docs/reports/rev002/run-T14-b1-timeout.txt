@@ -1,0 +1,73 @@
+﻿T14_pid=34544
+blk_ready_seen=True
+civinject v0.4.5 - CivLink M0-A trace DLL injector
+[*] 'powershell.exe' matched 15 process(es):
+      pid=35644 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=36944 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=37136 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=42660 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=19688 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=39404 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=40792 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=39584 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=29568 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=34292 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=37156 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=22288 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=5036 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=26100 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=34544 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+[*] inject into pid=34544: C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\civtrace\civtrace.dll
+[+] OK civtrace.dll loaded @ 0x7ff9fcc70000 (size=270336)
+    log: %LOCALAPPDATA%\CivLink\M0A\logs\civtrace_*.log (150ms batch flush)
+
+inject_exit=0 (expect 0)
+civinject v0.4.5 - CivLink M0-A trace DLL injector
+[*] 'powershell.exe' matched 15 process(es):
+      pid=35644 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=36944 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=37136 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=42660 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=19688 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=39404 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=40792 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=39584 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=29568 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=34292 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=37156 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=22288 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=5036 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=26100 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=34544 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+[*] unload: C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\civtrace\civtrace.dll (pid=34544)
+[*] CivTraceShutdown @ base=0x7ff9fcc70000 + rva=0x9330 = 0x7ff9fcc79330
+[!] shutdown NOT confirmed (code=-1) - ABORT per unload contract; NO FreeLibrary issued. Shutdown returned 2 (partial failure): retry -u after the target is quiescent, or close the process.
+
+first_unload_exit=2 (expect 2: drain timeout, chain aborted, resources kept)
+still_alive_after_timeout=True
+civinject v0.4.5 - CivLink M0-A trace DLL injector
+[*] 'powershell.exe' matched 15 process(es):
+      pid=35644 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=36944 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=37136 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=42660 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=19688 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=39404 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=40792 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=39584 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=29568 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=34292 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=37156 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=22288 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=5036 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=26100 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=34544 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+[*] unload: C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\civtrace\civtrace.dll (pid=34544)
+[*] CivTraceShutdown @ base=0x7ff9fcc70000 + rva=0x9330 = 0x7ff9fcc79330
+[+] CivTraceShutdown confirmed (code=0) - hooks disabled, log flushed
+[+] B2 audit-run mode: civtrace.dll intentionally LEFT MAPPED until pid=34544 exits (no FreeLibrary in live process; MinHook trampolines stay valid)
+
+second_unload_exit=0 (expect 0: retry completes shutdown)
+blk_socket_done=True (expect True: blocked socket eventually returned)
+timeout_line: 1 (expect 1)
+session_end: 1 (expect 1)

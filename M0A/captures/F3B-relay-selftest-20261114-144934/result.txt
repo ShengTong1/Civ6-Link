@@ -1,0 +1,20 @@
+﻿F3B-RELAY-SELFTEST: FAIL (4 of 67 failed)
+evidence label: simulated data-plane peer on loopback; NOT a real two-machine test,
+               NOT injection into a game process, NOT a multiplayer validation.
+evidence dir : C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\M0A\captures\F3B-relay-selftest-20261114-144934
+relay exe    : C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\civlink\relay\target\release\civlink-relay.exe
+relay sha256 : AE03327E417E89A3A885D87A9C7330CE331EAE9E4C24AE27B3AB5B13C0225BE3
+relay bytes  : 262144
+script       : C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\civlink\run-f3b-relay-selftest.ps1
+script sha256: 472003C130D6FD38A8A3345D9EED57F57C2101688CE53D57B3C84ABE40B21BDA
+peer A       : 0.0.0.0:56528  (peer id 101)
+peer B       : 0.0.0.0:56529  (peer id 202)
+registrations sent: 10
+payload1 fnv1a64 : c5620494bd8475c1
+payload2 fnv1a64 : b80f7e942a2daa55
+payload3 fnv1a64 : c6c9f694beb606fd
+failed checks:
+  - unknown flags = 1
+  - no sender = 0
+  - oversize = 0 (65535 buffer cannot overflow on IPv4 UDP)
+  - log records bad-magic rejection

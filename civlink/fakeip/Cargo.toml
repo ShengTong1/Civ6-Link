@@ -1,0 +1,13 @@
+[package]
+name = "civlink-fakeip"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+description = "CivLink F2 data-structure prototype: in-memory FakeEndpoint <-> PeerEndpoint mapping table (codex D2/D5 limited approval; pure-memory only, no DLL linkage)"
+
+[lib]
+name = "civlink_fakeip"
+path = "src/lib.rs"
+
+[dependencies]

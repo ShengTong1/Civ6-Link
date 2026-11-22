@@ -1,0 +1,16 @@
+M0-G peer-discover summary
+uuid      : d4b4ff27cfcef8e400000000c5c1ed4b
+elapsed_s : 48
+ifaces    : WLAN(192.168.31.60 vpn=false) (2 broadcast target(s))
+discovery sent/recv : 45/84
+cross-subnet recv   : 0 (peers whose src IP is outside every local subnet)
+responses sent      : 39
+peers discovered    : 1
+probes reflected    : 2
+
+== path quality (active probes) ==
+path WLAN(192.168.31.60) -> 192.168.31.214:63011 : sent=100 recv=98 p50=16.5ms p95=40.1ms J=5.43ms loss=2.00% score=0.4366 recommendable=true
+RECOMMENDED: WLAN(192.168.31.60) -> 192.168.31.214:63011 (score 0.4366)
+
+WARNING (R4): no authentication - any same-tool member of the broadcast domain can discover you and see your NIC IPs; trusted networks only
+WARNING (M5): with VPN NICs included, every member of the same VPN room can see your broadcast (Radmin is a layer-2 broadcast domain, verified)

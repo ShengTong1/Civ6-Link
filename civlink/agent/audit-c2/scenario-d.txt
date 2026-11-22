@@ -1,0 +1,11 @@
+civlink client (C2) self-test - scenario D
+  PASS D1 module reaches state 1                                  
+  PASS D2 initError == 0 (explicit ALL is valid)                  
+counters: sent=0 ignored=8 sendFail=0 initError=0 bind62056=0 sockOverflow=0 scatterGather=0 session=122135549164119
+  PASS D3 all 8 sends returned 4 bytes                            
+  PASS D4 sent == 0 (explicit ALL)                                
+  PASS D5 ignoredNonDiscovery == 8                                
+  PASS D6 shutdown returns 0                                      
+checks: 6 failed=0
+NOTE: bookkeeping only - the actual egress adapter is NOT verified here
+      (needs a second machine + capture, see M0C-C2-DESIGN-20261118.md 3.3)

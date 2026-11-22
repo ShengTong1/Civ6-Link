@@ -1,0 +1,10 @@
+﻿USER OBSERVATIONS (verbatim quotes from session):
+- m26254: "那几次也是B机器刷新的结果，我现在拿A已经创建房间了，即使不需要Agent，现在B依旧可以搜到A创建的真实房间了。当前的这项完事了"
+- m26306: "现在B只能看到一个真实房间，看不到虚拟房间"
+- m26472: "发现问题了：如果A真实创建房间，B就搜不到虚拟房间。如果A未创建真实房间，就可以搜到那个虚拟房间。修改问题，当前pc-b机器如果已经不在线了，就请不要使用了，检查问题"
+CONCLUSION: Civ6 LAN discovery list deduplicates by source IP (same IP shows one host).
+When A has a real room (game replies from 192.168.31.60:62900), the agent's virtual
+room (62901, same IP) is hidden by the client. When A has no real room, the agent
+is the only host on A's IP and B sees the virtual room. Agent reply path itself
+works (virtual room visible when A has no real room) - this is Civ6 client behavior,
+not a civlink defect. Real-room visibility (M0-B goal) achieved: B sees A's real room.

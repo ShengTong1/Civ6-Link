@@ -1,0 +1,56 @@
+﻿diff --git "a/C:\\Users\\dd\\Desktop\\injciv6-v0.3.3\\CivLink-M0A-audit\\docs\\reports\\rev002-baseline\\civtrace_common.h" "b/C:\\Users\\dd\\Desktop\\injciv6-v0.3.3\\CivLink-M0A-audit\\civtrace\\civtrace_common.h"
+index fc4c6dd..0aa6ac7 100644
+--- "a/C:\\Users\\dd\\Desktop\\injciv6-v0.3.3\\CivLink-M0A-audit\\docs\\reports\\rev002-baseline\\civtrace_common.h"
++++ "b/C:\\Users\\dd\\Desktop\\injciv6-v0.3.3\\CivLink-M0A-audit\\civtrace\\civtrace_common.h"
+@@ -1,22 +1,33 @@
+-// civtrace_common.h —— civtrace.dll 与 civinject.exe 的跨二进制契约（REV-001）
+-//
+-// 两个二进制都必须包含本头文件，保证版本号、DLL 文件名、导出名与卸载契约
+-// 只有唯一定义处；任何一侧单独修改而不改这里，都视为契约破坏。
++// civtrace_common.h —— civtrace.dll 与 civinject.exe 的共享契约
++// REV-002 (v0.4.1)：新增 CivTraceInitialize 导出契约（P1-5：DllMain 不再启动线程）。
+ #pragma once
+ 
+-#define CIVTRACE_VERSION           "0.4"
+-#define CIVTRACE_DLL_NAME_A        "civtrace.dll"
+-#define CIVTRACE_DLL_NAME_W        L"civtrace.dll"
++#define CIVTRACE_VERSION          "0.4.1"
++#define CIVTRACE_DLL_NAME_A       "civtrace.dll"
++#define CIVTRACE_DLL_NAME_W       L"civtrace.dll"
++
++// 远程调用导出：
++//   CivTraceInitialize : DWORD NTAPI (void)
++//       0 = 初始化成功（日志+钩子就绪）  1 = 已初始化（幂等）
++//       2 = 初始化失败（钩子已全部回滚，进程处于无钩子干净状态）
++//   CivTraceShutdown   : DWORD NTAPI (void)
++//       0 = 关闭完成（钩子已停、线程已汇合、日志已刷盘关闭）
++//       1 = 已经在关闭中 / 已关闭完成（幂等重入）
++//       2 = 本次关闭尝试失败（状态=SHUTDOWN_FAILED，可再次调用重试）
++#define CIVTRACE_INIT_EXPORT_A    "CivTraceInitialize"
+ #define CIVTRACE_SHUTDOWN_EXPORT_A "CivTraceShutdown"
+ 
+-// CivTraceShutdown(void) -> DWORD：
+-//   0 = shutdown 完成（全部 Hook 已禁用并等待在途 Hook 退出、日志已刷盘并关闭）
+-//   1 = 已经 shutdown（重复调用；此时同样可安全 FreeLibrary）
+-//   2 = shutdown 部分失败（MH_DisableHook / MH_Uninitialize 失败）
+-//
+-// 卸载契约（REV-001 P0-2，强制）：
+-//   注入器必须在远程调用 CivTraceShutdown 并确认返回 0 或 1 之后，才允许远程
+-//   FreeLibrary；返回 2、等待超时或 CreateRemoteThread 失败时，必须放弃
+-//   FreeLibrary 并保留现场（报告给操作者，由其决定关闭进程）。
+-//   理由：FreeLibrary 直接卸载映射页时，若仍有 Hook 执行体在原函数跳板里，
+-//   会在已卸载代码上执行 → 进程崩溃。FreeLibrary 成功 ≠ Hook 安全卸载。
++// 卸载契约（injector 必须遵守，REV-001 P0-2 + REV-002 P0-6/7）：
++//   1. 注入 = 远程 LoadLibraryW（等待确认退出后才允许释放远程路径缓冲区）
++//          → 远程调用 CivTraceInitialize（确认退出码 0/1）。
++//   2. 卸载 = 远程调用 CivTraceShutdown，退出码必须为 0 或 1，
++//      且 GetExitCodeThread 的 BOOL 返回必须为 TRUE，
++//      才允许执行恰好一次 FreeLibrary（本工具只持有 1 个注入引用）。
++//      FreeLibrary 后必须复核模块是否仍在目标中；仍在 = 存在额外引用（exit 1）。
++//   3. 任何"无法确认"（超时/GetExitCodeThread 失败/身份校验失败）一律 abort，
++//      保留现场，绝不 FreeLibrary。
++
++// 日志行上限（含结尾 0）。所有 Hook 行格式化都以此封顶。
++#define CVL_LINE_MAX 512
++// 环形队列默认档位（槽数 = 1<<shift，可用 CIVTRACE_RING_SHIFT 6..16 覆盖，仅测试用）
++#define CVL_RING_SHIFT_DEFAULT 13

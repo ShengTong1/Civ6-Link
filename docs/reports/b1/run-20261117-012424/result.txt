@@ -1,0 +1,1 @@
+﻿B1-REALCAP-SELFTEST: PASS (17 checks, 0 failures)

@@ -1,0 +1,3 @@
+[submodule "deps/MinHook"]
+	path = deps/MinHook
+	url = https://github.com/TsudaKageyu/minhook.git

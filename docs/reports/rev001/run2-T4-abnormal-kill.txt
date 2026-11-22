@@ -1,0 +1,17 @@
+﻿B_pid=38652
+civinject v0.4 - CivLink M0-A trace DLL injector
+[*] 'powershell.exe' matched 4 process(es):
+      pid=35244 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=37008 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=36632 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=38652 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+[*] inject into pid=38652: C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\civtrace\civtrace.dll
+[+] OK civtrace.dll loaded @ 0x7ff9cdcb0000 (size=262144)
+    log: %LOCALAPPDATA%\CivLink\M0A\logs\civtrace_*.log (150ms batch flush)
+
+exit=0
+log_before_kill size0=0 size1=23620
+成功: 已终止 PID 为 38652 的进程。
+
+log_after_forcekill size=24562 lastline=[23:06:13.260 qpc=491866309265 #000158 tid=36860 recvfrom s=0x9e8? ret=-1 src=- len=0 caller=System.ni.dll+0x7ccdde err=10054]
+note: force kill = no DLL_PROCESS_DETACH, no session-end line expected; flushed lines must survive intact

@@ -1,0 +1,22 @@
+﻿T6_pid=30136
+civinject v0.4.5 - CivLink M0-A trace DLL injector
+[*] 'powershell.exe' matched 9 process(es):
+      pid=35644 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=36944 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=37136 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=42660 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=19688 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=39404 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=40792 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=39584 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=30136 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+[*] inject into pid=30136: C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\civtrace\civtrace.dll
+[+] OK civtrace.dll loaded @ 0x7ff9fcc70000 (size=270336)
+    log: %LOCALAPPDATA%\CivLink\M0A\logs\civtrace_*.log (150ms batch flush)
+
+inject_exit=0 (expect 0; DLL loads but no hooks)
+failclosed: !!! flusher thread creation FAILED [SIM] - hooks NOT installed (fail-closed)
+hooks_installed_count=0 (expect 0)
+成功: 已终止 PID 为 30136 的进程。
+
+killed (no unload: shutdown of FAILED state has no hooks to disable)

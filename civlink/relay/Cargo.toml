@@ -1,0 +1,15 @@
+[package]
+name = "civlink-relay"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+description = "CivLink F3-B Relay prototype: routes CVLR envelopes by dst_peer and forwards the payload verbatim (plaintext; no decryption, no rewrite, no retransmit)"
+
+# Zero dependencies on purpose: the F3 prototype must build with
+# `cargo +1.75.0 build --offline` and its surface must stay auditable.
+[dependencies]
+
+[[bin]]
+name = "civlink-relay"
+path = "src/main.rs"

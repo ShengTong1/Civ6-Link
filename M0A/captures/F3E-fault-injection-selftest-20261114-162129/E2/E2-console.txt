@@ -1,0 +1,34 @@
+﻿civlink-relay 0.1.0 listening on 127.0.0.1:34720 for 40s
+civlink-relay 0.1.0 - F3-B relay summary
+run time          : 08:21:34.738
+listen            : 127.0.0.1:34720 for 2.5 s
+datagrams         : 7
+bytes in          : 148
+bad envelope      : 0
+control frames    : 6
+unknown flags     : 0 (well-formed control frames this prototype does not route)
+registers         : 6
+forward requests  : 1
+forwarded         : 1
+forward bytes     : 8
+forward fail      : 0
+no route          : 0
+self drop         : 0
+no sender         : 0 (unregistered source, dropped - src_peer not trusted)
+oversize          : 0 (datagram larger than 65535 B, skipped, not fatal; with a 65535 B buffer an IPv4 UDP payload of at most 65507 B cannot trigger this - the branch is a guard, not a reachable path)
+fatal             : none
+datagram identity : datagrams == registers + forward_requests + bad_envelope + unknown_flags (6 + 1 + 0 + 0) = 7
+reconciliation    : forwarded + no_route + self_drop + forward_fail + no_sender = 1 == forward_requests = 1
+peers seen        : 2
+
+notes
+- This Relay sees PLAINTEXT: the F3 prototype has no encryption (design section 4.1).
+- It does not decrypt, rewrite, retransmit or reorder; one input envelope produces at
+most one output datagram, and the payload bytes are copied unchanged.
+- `hash` is FNV-1a 64 of the payload, for three-way byte comparison with the sender
+and the receiving peer. It is not a security hash.
+- Prototype only: not the product Relay, no identity/authentication, no rate limit
+beyond loopback testing, no L1/L2 Noise keys (those are M0-B).
+
+[*] wrote C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\M0A\captures\F3E-fault-injection-selftest-20261114-162129\E2/relay-log.txt and C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\M0A\captures\F3E-fault-injection-selftest-20261114-162129\E2/relay-summary.txt
+

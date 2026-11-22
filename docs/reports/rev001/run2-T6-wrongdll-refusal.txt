@@ -1,0 +1,10 @@
+﻿civinject v0.4 - CivLink M0-A trace DLL injector
+[*] 'powershell.exe' matched 3 process(es):
+      pid=35244 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=37008 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      pid=36632 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+[*] unload: C:\Windows\System32\ws2_32.dll (pid=36632)
+[!] cannot resolve export CivTraceShutdown from local file: C:\Windows\System32\ws2_32.dll
+    refusing FreeLibrary: without confirmed shutdown, unloading can crash the target
+
+exit=2 (expect 2)

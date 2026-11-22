@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default capability: shell execute for whitelisted civlink binaries only.","local":true,"windows":["main"],"permissions":["core:default","shell:allow-execute",{"identifier":"shell:allow-execute","allow":[{"name":"civlink_ctl.exe","sidecar":false},{"name":"civlink-agent.exe","sidecar":false}]}]}}

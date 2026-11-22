@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>CivLink 联机助手</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>CivLink 联机助手</h1>
+  </header>
+  <nav id="tabs">
+    <button data-tab="inject" class="active"><svg class="tab-ic" aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>注入</button>
+    <button data-tab="peers"><svg class="tab-ic" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="12" x2="16.5" y2="7.5"/></svg>节点发现</button>
+    <button data-tab="about"><svg class="tab-ic" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><circle cx="12" cy="7.5" r=".8" fill="currentColor" stroke="none"/></svg>关于</button>
+  </nav>
+  <main>
+    <section id="tab-inject" class="tab active">
+      <div class="card">
+        <div class="row">
+          <span class="rowlabel">进程</span>
+          <select id="proc"></select>
+          <button id="refresh">刷新</button>
+        </div>
+        <div class="row">
+          <span class="rowlabel">角色</span>
+          <select id="role"><option>服务端（房主）</option><option>客户端（加入房间）</option></select>
+        </div>
+        <div id="clientonly" class="row hidden">
+          <span class="rowlabel">发送网卡</span>
+          <select id="iface"></select>
+        </div>
+        <div id="hostonly" class="row">
+          <span class="rowlabel">监听网卡</span>
+          <span class="muted">全部网卡（0.0.0.0）</span>
+        </div>
+        <div id="hostcompletion" class="row">
+          <span class="rowlabel">发现补全</span>
+          <label class="chk"><input type="checkbox" id="agentenable" /><span>启用（可选，增强房间发现稳定性）</span></label>
+        </div>
+        <div id="agentctl" class="row hidden">
+          <span class="rowlabel"></span>
+          <span id="agentstatus" class="muted">已启用自动补全：注入成功并检测到游戏房间后自动启动，无需手动操作</span>
+        </div>
+        <div class="row">
+          <button id="inject" class="primary">执行注入</button>
+          <button id="uninject">卸载注入</button>
+        </div>
+      </div>
+      <div class="logtoolbar"><span class="muted">操作日志</span><button type="button" id="injectlog-clear" class="linklike">清空</button></div>
+      <div class="logcard"><pre id="injectlog"></pre></div>
+    </section>
+
+    <section id="tab-peers" class="tab">
+      <div class="card pd-result">
+        <div class="row">
+          <span class="rowlabel">发现结果</span>
+          <span id="pd-phase" class="phase">未开始</span>
+          <span id="pd-self" class="muted">本机 —</span>
+          <span id="pd-count" class="muted">设备 0 · 路径 0</span>
+          <button type="button" id="pd-clear" class="linklike">清空</button>
+        </div>
+        <div id="pd-devices" class="dev-list"><div class="empty">尚未发现设备。请双方都点击「开始广播」，约 10 秒内应能看到对端。</div></div>
+        <div id="pd-paths" class="path-table"></div>
+        <div id="pd-rec" class="rec"></div>
+      </div>
+      <div class="card">
+        <div class="row">
+          <span class="rowlabel">网卡选择</span>
+          <button type="button" id="pd-select-all" class="linklike">全选</button>
+          <button type="button" id="pd-refresh" class="linklike">刷新</button>
+        </div>
+        <div id="pd-ifaces-wrap">
+          <div id="pd-ifaces" class="iface-list"></div>
+        </div>
+        <div class="row">
+          <button id="pd-start" class="primary">开始广播</button>
+          <button id="pd-stop" disabled>停止</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-about" class="tab">
+      <div class="card about-card">
+        <div class="about-hero">
+          <span class="about-mark" aria-hidden="true">C</span>
+          <div>
+            <div class="about-name">CivLink 联机助手</div>
+            <div class="about-tagline">文明 6 局域网联机辅助工具</div>
+          </div>
+        </div>
+        <p class="about-desc">CivLink 联机助手为《文明 6》局域网联机而生：客户端注入后，把发现广播固定到所选的网卡（如 WLAN），避免广播被 VPN 网卡抢占导致找不到房间；服务端注入后即可被客户端发现，并可在房间发现不稳定时启用发现补全，把真实房间转发到客户端可达的网络路径。适用于同一局域网或 Radmin / ZeroTier 等 VPN 内的两人或多人联机。</p>
+        <table class="about-meta">
+          <tbody>
+            <tr><th>版本</th><td>0.1.0</td></tr>
+            <tr><th>作者</th><td>shengtong（2026）</td></tr>
+            <tr><th>项目地址</th><td><a id="about-repo" href="https://github.com/ShengTong1/Civ6-Link" target="_blank" rel="noreferrer">https://github.com/ShengTong1/Civ6-Link</a></td></tr>
+          </tbody>
+        </table>
+        <p class="about-boundary" id="about-boundary"></p>
+      </div>
+      <div class="card diag-card">
+        <div class="row">
+          <span class="rowlabel">诊断导出</span>
+          <button id="btndiag" class="primary">生成诊断</button>
+          <button id="diagexport">导出</button>
+          <span class="muted">含运行状态 + 错误计数 + 脱敏日志</span>
+        </div>
+        <div class="logcard short"><pre id="diaglog"></pre></div>
+      </div>
+    </section>
+  </main>
+  <script src="main.js"></script>
+</body>
+</html>

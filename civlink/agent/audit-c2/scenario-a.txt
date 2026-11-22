@@ -1,0 +1,14 @@
+civlink client (C2) self-test - scenario A
+  PASS A1 module reaches state 1                                  
+  PASS A2 initError == 0 (missing config = ALL)                   
+  PASS A3 session id non-zero                                     
+  PASS A4 CivLinkSessionId agrees with the counter block          
+counters: sent=0 ignored=8 sendFail=0 initError=0 bind62056=0 sockOverflow=0 scatterGather=0 session=160223313149446
+  PASS A5 all 8 sends returned 4 bytes                            
+  PASS A6 sent == 0 (ALL pins nothing)                            
+  PASS A7 ignoredNonDiscovery == 8 (counted, never pinned)        
+  PASS A8 sendFail == 0                                           
+  PASS A9 shutdown returns 0 (clean drain)                        
+checks: 9 failed=0
+NOTE: bookkeeping only - the actual egress adapter is NOT verified here
+      (needs a second machine + capture, see M0C-C2-DESIGN-20261118.md 3.3)

@@ -1,0 +1,352 @@
+﻿diff --git "a/docs\\reports\\rev002-baseline\\injector.cpp" "b/civtrace\\injector.cpp"
+index 9f2dc74..c416350 100644
+--- "a/docs\\reports\\rev002-baseline\\injector.cpp"
++++ "b/civtrace\\injector.cpp"
+@@ -42,43 +42,73 @@
+ #include <cstdlib>
+ #include <cstring>
+ #include <cstdint>
++#include <vector>
+ 
+ #include "civtrace_common.h"
+ 
+-static void EnableDebugPrivilege() {
++// REV-002 R5：报告特权启用结果（含 ERROR_NOT_ALL_ASSIGNED 部分授权）。
++// 返回 0=成功；1=部分授权（ERROR_NOT_ALL_ASSIGNED）；-1=失败（任一环节失败）。
++static int EnableDebugPrivilege() {
+     HANDLE tok = nullptr;
+-    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &tok)) return;
++    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &tok)) {
++        printf("[!] EnableDebugPrivilege: OpenProcessToken failed err=%lu\n", GetLastError());
++        return -1;
++    }
+     LUID luid{};
+-    if (LookupPrivilegeValueA(nullptr, "SeDebugPrivilege", &luid)) {
+-        TOKEN_PRIVILEGES tp{};
+-        tp.PrivilegeCount = 1;
+-        tp.Privileges[0].Luid = luid;
+-        tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+-        AdjustTokenPrivileges(tok, FALSE, &tp, sizeof(tp), nullptr, nullptr);
++    if (!LookupPrivilegeValueA(nullptr, "SeDebugPrivilege", &luid)) {
++        DWORD e = GetLastError();
++        printf("[!] EnableDebugPrivilege: LookupPrivilegeValue(SeDebugPrivilege) failed err=%lu\n", e);
++        CloseHandle(tok);
++        return -1;
+     }
++    TOKEN_PRIVILEGES tp{};
++    tp.PrivilegeCount = 1;
++    tp.Privileges[0].Luid = luid;
++    tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
++    if (!AdjustTokenPrivileges(tok, FALSE, &tp, sizeof(tp), nullptr, nullptr)) {
++        DWORD e = GetLastError();
++        printf("[!] EnableDebugPrivilege: AdjustTokenPrivileges failed err=%lu\n", e);
++        CloseHandle(tok);
++        return -1;
++    }
++    DWORD e = GetLastError();
+     CloseHandle(tok);
++    if (e == ERROR_NOT_ALL_ASSIGNED) {
++        printf("[!] EnableDebugPrivilege: NOT ALL ASSIGNED - some privileges not granted "
++               "(run as Administrator for full access)\n");
++        return 1;
++    }
++    return 0;
+ }
+ 
+-static int FindPids(const char* name, DWORD* out, int maxn) {
++// REV-002 R4：动态收集匹配 PID；截断（超过容量）明确报错，绝不静默选错进程。
++// 返回匹配数；-1=枚举失败；-2=截断（超出容量）。
++static int FindPids(const char* name, std::vector<DWORD>& out) {
+     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+-    if (snap == INVALID_HANDLE_VALUE) return 0;
++    if (snap == INVALID_HANDLE_VALUE) return -1;
+     PROCESSENTRY32 pe{}; pe.dwSize = sizeof pe;
+-    int n = 0;
+     if (Process32First(snap, &pe)) {
+         do {
+-            if (_stricmp(pe.szExeFile, name) == 0 && n < maxn) out[n++] = pe.th32ProcessID;
++            if (_stricmp(pe.szExeFile, name) == 0) out.push_back(pe.th32ProcessID);
+         } while (Process32Next(snap, &pe));
+     }
+     CloseHandle(snap);
+-    return n;
++    return (int)out.size();
+ }
+ 
++// REV-002 R4：路径查询失败时显示 PID + 错误码，不静默。
+ static void PrintExePath(DWORD pid) {
+     HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+-    if (!h) return;
++    if (!h) {
++        printf("      pid=%lu -> (OpenProcess failed err=%lu)\n", (unsigned long)pid, GetLastError());
++        return;
++    }
+     char path[MAX_PATH * 2]{};
+     DWORD sz = sizeof path;
+-    if (QueryFullProcessImageNameA(h, 0, path, &sz)) printf("      pid=%lu -> %s\n", (unsigned long)pid, path);
++    if (QueryFullProcessImageNameA(h, 0, path, &sz))
++        printf("      pid=%lu -> %s\n", (unsigned long)pid, path);
++    else
++        printf("      pid=%lu -> (QueryFullProcessImageName failed err=%lu)\n", (unsigned long)pid, GetLastError());
+     CloseHandle(h);
+ }
+ 
+@@ -89,29 +119,42 @@ static void PrintExePath(DWORD pid) {
+ // ---------------------------------------------------------------------------
+ struct RemoteModuleInfo { uintptr_t base = 0; size_t size = 0; };
+ 
++// REV-002 R6：EnumProcessModulesEx 缓冲不足时扩容重试（≤6 次），永不截断；
++// 枚举失败返回 -1（"加载与否"不可判定），绝不伪装成"未加载"。
++static bool SimSmallBuf() {
++    char s[8] = "";
++    GetEnvironmentVariableA("CIVTRACE_INJ_SIM_ENUM_SMALLBUF", s, sizeof s);
++    return s[0] == '1';
++}
+ static int QueryRemoteModule(HANDLE hProc, const char* dllname, RemoteModuleInfo* out) {
+     out->base = 0; out->size = 0;
+-    HMODULE mods[1024];
++    std::vector<HMODULE> mods(SimSmallBuf() ? 1 : 1024);   // 测试 seam：首次极小缓冲触发扩容
+     DWORD needed = 0;
+-    if (!EnumProcessModulesEx(hProc, mods, sizeof mods, &needed, LIST_MODULES_64BIT)) return -1;
+-    DWORD count = needed / sizeof(HMODULE);
+-    if (count > 1024) count = 1024;
+-    for (DWORD i = 0; i < count; ++i) {
+-        char name[MAX_PATH]{};
+-        if (!GetModuleBaseNameA(hProc, mods[i], name, MAX_PATH)) continue;
+-        if (_stricmp(name, dllname) == 0) {
+-            MODULEINFO mi{};
+-            if (GetModuleInformation(hProc, mods[i], &mi, sizeof mi)) {
+-                out->base = (uintptr_t)mi.lpBaseOfDll;
+-                out->size = (size_t)mi.SizeOfImage;
+-            } else {
+-                out->base = (uintptr_t)mods[i];   // 大小未知，仍可用基址（有本地 PE 校验兜底）
+-                out->size = 0;
++    for (int attempt = 0; attempt < 6; ++attempt) {
++        DWORD cb = (DWORD)(mods.size() * sizeof(HMODULE));
++        if (!EnumProcessModulesEx(hProc, mods.data(), cb, &needed, LIST_MODULES_64BIT)) return -1;
++        DWORD count = needed / sizeof(HMODULE);
++        if (count <= mods.size()) {
++            for (DWORD i = 0; i < count; ++i) {
++                char name[MAX_PATH]{};
++                if (!GetModuleBaseNameA(hProc, mods[i], name, MAX_PATH)) continue;
++                if (_stricmp(name, dllname) == 0) {
++                    MODULEINFO mi{};
++                    if (GetModuleInformation(hProc, mods[i], &mi, sizeof mi)) {
++                        out->base = (uintptr_t)mi.lpBaseOfDll;
++                        out->size = (size_t)mi.SizeOfImage;
++                    } else {
++                        out->base = (uintptr_t)mods[i];   // 大小未知，仍可用基址（有本地 PE 校验兜底）
++                        out->size = 0;
++                    }
++                    return 1;
++                }
+             }
+-            return 1;
++            return 0;
+         }
++        mods.resize((size_t)count + 4096 / sizeof(HMODULE));   // 扩容重试，永不截断
+     }
+-    return 0;
++    return -1;   // 6 次仍不足：不可判定
+ }
+ 
+ // ---------------------------------------------------------------------------
+@@ -172,7 +215,13 @@ static bool BuildDefaultDllPath(char* out, size_t n) {
+ }
+ 
+ // 远程调用 CivTraceShutdown 并取完整退出码（导出返回 DWORD）。
+-// 返回 0=确认 shutdown 完成；1=确认已 shutdown；-1=无法确认（任何失败）。
++// 返回 0=确认 shutdown 完成；1=确认已 shutdown（幂等/已完成）；-1=无法确认（任何失败）。
++// REV-002 R1：GetExitCodeThread 必须检查 BOOL 返回值；读取失败=无法确认，绝不默认零当成功。
++static bool SimGecFail() {
++    char s[8] = "";
++    GetEnvironmentVariableA("CIVTRACE_INJ_SIM_GEC_FAIL", s, sizeof s);
++    return s[0] == '1';
++}
+ static int RemoteCallShutdown(HANDLE hProc, uintptr_t remoteProc) {
+     HANDLE t = CreateRemoteThread(hProc, nullptr, 0, (LPTHREAD_START_ROUTINE)remoteProc, nullptr, 0, nullptr);
+     if (!t) { printf("[!] CreateRemoteThread(CivTraceShutdown) failed err=%lu\n", GetLastError()); return -1; }
+@@ -183,7 +232,19 @@ static int RemoteCallShutdown(HANDLE hProc, uintptr_t remoteProc) {
+         return -1;
+     }
+     DWORD code = 0;
+-    GetExitCodeThread(t, &code);
++    if (SimGecFail()) {   // 测试 seam：模拟 GetExitCodeThread 读取失败
++        printf("[!] GetExitCodeThread(CivTraceShutdown) FAILED [SIM] - exit code NOT read; "
++               "shutdown NOT confirmed, refusing FreeLibrary\n");
++        CloseHandle(t);
++        return -1;
++    }
++    if (!GetExitCodeThread(t, &code)) {
++        DWORD e = GetLastError();
++        printf("[!] GetExitCodeThread(CivTraceShutdown) failed err=%lu - exit code NOT read; "
++               "shutdown NOT confirmed, refusing FreeLibrary\n", e);
++        CloseHandle(t);
++        return -1;
++    }
+     CloseHandle(t);
+     return code == 0 ? 0 : (code == 1 ? 1 : -1);
+ }
+@@ -208,11 +269,16 @@ int main(int argc, char** argv) {
+         return 1;
+     }
+ 
+-    EnableDebugPrivilege();
++    EnableDebugPrivilege();   // R5：失败/部分授权已在函数内打印诊断
+ 
+-    DWORD pids[32];
+-    int np = FindPids(proc, pids, 32);
+-    if (!np) { printf("[!] process '%s' not found (launch the game first)\n", proc); return 1; }
++    std::vector<DWORD> pids;
++    int np = FindPids(proc, pids);
++    if (np < 0) {
++        printf("[!] process enumeration failed (err=%lu) - cannot search for '%s'\n",
++               GetLastError(), proc);
++        return 1;
++    }
++    if (np == 0) { printf("[!] process '%s' not found (launch the game first)\n", proc); return 1; }
+     printf("[*] '%s' matched %d process(es):\n", proc, np);
+     for (int i = 0; i < np; ++i) PrintExePath(pids[i]);
+ 
+@@ -248,9 +314,26 @@ int main(int argc, char** argv) {
+         return 1;
+     }
+ 
+-    // 架构检查：x64 DLL 只能进 x64 进程
++    // R5：架构检查——x64 DLL 只能进 x64 进程；IsWow64Process 失败 fail-closed（不可判定即拒绝）。
+     BOOL wow64 = FALSE;
+-    if (IsWow64Process(h, &wow64) && wow64) {
++    {
++        char s[8] = "";
++        GetEnvironmentVariableA("CIVTRACE_INJ_SIM_ARCH_FAIL", s, sizeof s);
++        if (s[0] == '1') {   // 测试 seam：模拟 IsWow64Process 查询失败
++            printf("[!] IsWow64Process failed err=%lu [SIM] - target architecture UNDETERMINED; "
++                   "refusing to proceed (civtrace.dll is x64 only)\n", (unsigned long)ERROR_FUNCTION_FAILED);
++            CloseHandle(h);
++            return 2;
++        }
++    }
++    if (!IsWow64Process(h, &wow64)) {
++        DWORD e = GetLastError();
++        printf("[!] IsWow64Process failed err=%lu - target architecture UNDETERMINED; "
++               "refusing to proceed (civtrace.dll is x64 only)\n", e);
++        CloseHandle(h);
++        return 2;
++    }
++    if (wow64) {
+         printf("[!] target is a 32-bit (WOW64) process - civtrace.dll is x64 only\n");
+         CloseHandle(h);
+         return 1;
+@@ -301,20 +384,66 @@ int main(int argc, char** argv) {
+         int sc = RemoteCallShutdown(h, remoteProc);
+         if (sc != 0 && sc != 1) {
+             printf("[!] shutdown NOT confirmed (code=%d) - ABORT per unload contract; "
+-                   "NO FreeLibrary issued. Close the process to unload safely.\n", sc);
++                   "NO FreeLibrary issued. Shutdown returned 2 (partial failure): "
++                   "retry -u after the target is quiescent, or close the process.\n", sc);
+             CloseHandle(h);
+             return 2;
+         }
+         printf("[+] CivTraceShutdown confirmed (code=%d) - hooks disabled, log flushed\n", sc);
+ 
+-        // 确认成功后才 FreeLibrary（LoadLibraryW 引用计数 = 1；重复注入时 2）
+-        for (int i = 0; i < 2 && sc == 0; ++i) {
++        // 测试 seam：CIVTRACE_INJ_TEST_DOUBLE_SHUTDOWN=1 时二次远程调用 Shutdown，
++        // 验证幂等（应返回 1=已 shutdown）且卸载流程仍可继续（R1 契约：0/1 均允许卸载）。
++        {
++            char s[8] = "";
++            GetEnvironmentVariableA("CIVTRACE_INJ_TEST_DOUBLE_SHUTDOWN", s, sizeof s);
++            if (s[0] == '1') {
++                int sc2 = RemoteCallShutdown(h, remoteProc);
++                if (sc2 != 1) {
++                    printf("[!] double-shutdown test: second CivTraceShutdown returned %d (expected 1=idempotent)\n", sc2);
++                    CloseHandle(h);
++                    return 2;
++                }
++                printf("[+] double-shutdown test: second call confirmed idempotent (code=%d)\n", sc2);
++            }
++        }
++
++        // R1：本工具对模块的 LoadLibrary 责任 = 恰一次（inject 路径 LoadLibraryW 一次）。
++        // Shutdown 0 或 1 均代表"已确认关闭"（1=幂等/已完成，钩子同样已禁用），都允许卸载。
++        // 逐次 FreeLibrary：每次必须验证远程线程结束 + 退出码可读；失败/超时重试，最终仍失败
++        // 则保留现场（模块仍在=额外引用），绝不假装成功。
++        bool freeOk = false;
++        for (int attempt = 0; attempt < 3 && !freeOk; ++attempt) {
+             HANDLE t = CreateRemoteThread(h, nullptr, 0, (LPTHREAD_START_ROUTINE)FreeLibrary, (LPVOID)mi.base, 0, nullptr);
+-            if (!t) { printf("[!] CreateRemoteThread(FreeLibrary) failed err=%lu\n", GetLastError()); break; }
++            if (!t) {
++                DWORD e = GetLastError();
++                printf("[!] CreateRemoteThread(FreeLibrary) attempt %d failed err=%lu\n", attempt + 1, e);
++                Sleep(300);
++                continue;
++            }
+             DWORD w = WaitForSingleObject(t, 15000);
+-            if (w != WAIT_OBJECT_0) { printf("[!] FreeLibrary wait timeout\n"); CloseHandle(t); break; }
++            DWORD frc = 0;
++            bool got = false;
++            if (w == WAIT_OBJECT_0) got = GetExitCodeThread(t, &frc);
+             CloseHandle(t);
+-            Sleep(150);
++            if (w != WAIT_OBJECT_0) {
++                printf("[!] FreeLibrary attempt %d wait timeout/failed - retrying\n", attempt + 1);
++                Sleep(300);
++                continue;
++            }
++            if (!got) {
++                printf("[!] FreeLibrary attempt %d exit code NOT readable - cannot confirm release; retrying\n", attempt + 1);
++                Sleep(300);
++                continue;
++            }
++            // FreeLibrary 返回 0 表示模块引用计数未降为 0（仍有其它引用），但本工具的责任已释放。
++            printf("[+] FreeLibrary attempt %d confirmed (exit code %lu)\n", attempt + 1, (unsigned long)frc);
++            freeOk = true;
++        }
++        if (!freeOk) {
++            printf("[!] FreeLibrary NOT confirmed after 3 attempts - module left loaded; "
++                   "close the process to unload safely (check for antivirus interference)\n");
++            CloseHandle(h);
++            return 2;
+         }
+         Sleep(300);
+         RemoteModuleInfo left;
+@@ -325,8 +454,9 @@ int main(int argc, char** argv) {
+             return 0;
+         }
+         if (q2 == 1)
+-            printf("[!] pid=%lu module may still be loaded (refcount>1?); "
+-                   "closing the process is the reliable unload\n", (unsigned long)pid);
++            printf("[!] pid=%lu module may still be loaded (refcount>1 = extra references); "
++                   "this tool's reference was released; closing the process is the reliable unload\n",
++                   (unsigned long)pid);
+         else
+             printf("[?] pid=%lu unload state cannot be verified - check the log file\n", (unsigned long)pid);
+         CloseHandle(h);
+@@ -380,11 +510,23 @@ int main(int argc, char** argv) {
+     }
+     DWORD w = WaitForSingleObject(t, 15000);
+     DWORD code = 0;
+-    if (w == WAIT_OBJECT_0) GetExitCodeThread(t, &code);
++    bool got = false;
++    if (w == WAIT_OBJECT_0) got = GetExitCodeThread(t, &code);
+     CloseHandle(t);
+-    VirtualFreeEx(h, remote, 0, MEM_RELEASE);
+-    if (w != WAIT_OBJECT_0)
+-        printf("[!] LoadLibraryW remote thread did not exit within 15s (process may be hung or guarded)\n");
++    {
++        char s[8] = "";
++        GetEnvironmentVariableA("CIVTRACE_INJ_SIM_LOAD_TIMEOUT", s, sizeof s);
++        if (s[0] == '1') { w = WAIT_TIMEOUT; got = false; }   // 测试 seam：模拟远程线程未确认结束
++    }
++    if (w != WAIT_OBJECT_0 || !got) {
++        // P0-8/R1：远程线程未确认结束前，禁止释放远程路径缓冲区（线程可能仍在读它）。
++        printf("[!] LoadLibraryW remote thread did NOT confirm exit (w=%lu, exitCodeReadable=%s) - "
++               "ABORT; remote buffer LEFT in place for safety; process may be hung/guarded\n",
++               (unsigned long)w, got ? "yes" : "no");
++        CloseHandle(h);
++        return 2;
++    }
++    VirtualFreeEx(h, remote, 0, MEM_RELEASE);   // 线程已确认结束，缓冲安全释放
+ 
+     Sleep(300);
+     RemoteModuleInfo loaded;

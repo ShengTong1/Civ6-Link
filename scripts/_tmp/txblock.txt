@@ -1,0 +1,283 @@
+﻿# ================================================================== tx ops
+# Test seam for the backup file transaction (REV-008 ③/④).
+# Every filesystem operation the transaction performs goes through this table,
+# so a test can make exactly one step fail and observe what is left behind.
+# Production runs use the real implementations below; nothing else may swap it.
+$script:TxOps = @{
+  OpenCreateNew = { param($path) [IO.File]::Open($path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write) }
+  WriteAllText  = { param($path, $text, $enc) [IO.File]::WriteAllText($path, $text, $enc) }
+  ReadAllText   = { param($path) [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8) }
+  Hash          = { param($path) (Get-FileHash $path -Algorithm SHA256).Hash }
+  Move          = { param($src, $dst) Move-Item -Path $src -Destination $dst -ErrorAction Stop }
+  Remove        = { param($path) if (Test-Path $path) { Remove-Item $path -Force -ErrorAction SilentlyContinue } }
+  Exists        = { param($path) (Test-Path $path) }
+}
+
+function Invoke-BackupTx {
+  <#
+    Writes an apply-backup as a two-phase file transaction.
+
+    Phases: stage the JSON (temp) -> verify it by hash AND by re-parsing it ->
+    stage the sidecar (temp) -> verify the sidecar by readback -> commit the
+    sidecar -> commit the JSON -> confirm the committed hash.
+
+    On any failure the whole set is removed again, so the caller can never see
+    "a backup that exists but was not verified". Returns:
+      Ok       : $true only if both files are committed and verified
+      Stage    : last stage entered (also the stage that failed)
+      Message  : failure text
+      Residual : files still present after the cleanup attempt
+      FinalHash: committed JSON hash when Ok
+
+    Scope limit (REV-008): this is an ORDERED SEQUENCE OF FILE OPERATIONS, not
+    an atomic multi-file commit. If the process is killed between the two
+    Move-Item calls the cleanup never runs. The residual list exists so a
+    leftover can be reported instead of silently trusted.
+  #>
+  param($Payload, [string]$BakPath)
+
+  $ops    = $script:TxOps
+  $tmp    = "$BakPath.tmp"
+  $sTmp   = "$BakPath.sha256.tmp"
+  $side   = "$BakPath.sha256"
+  $stage  = 'start'
+  $msg    = $null
+  $final  = $null
+  $done   = $false
+
+  try {
+    $json = $Payload | ConvertTo-Json -Depth 6
+    $enc  = [Text.UTF8Encoding]::new($true)
+
+    $stage = 'json-stage'
+    $fs = & $ops.OpenCreateNew $tmp
+    try {
+      $bytes = $enc.GetBytes($json)
+      $fs.Write($bytes, 0, $bytes.Length)
+      $fs.Flush($true)
+    } finally { try { $fs.Close() } catch { } }
+
+    $stage = 'json-hash'
+    $hash = & $ops.Hash $tmp
+
+    $stage = 'json-verify'
+    $back = (& $ops.ReadAllText $tmp) | ConvertFrom-Json
+    if ([int]$back.schema -lt 3)                        { throw 'schema readback < 3' }
+    if ("$($back.host)" -ne "$($Payload.host)")         { throw 'host readback mismatch' }
+    if ("$($back.peerIp)" -ne "$($Payload.peerIp)")     { throw 'peerIp readback mismatch' }
+    if (@($back.changed).Count -ne @($Payload.changed).Count) { throw 'changed count readback mismatch' }
+    if (-not $back.keep -or [int]$back.keep.ifIndex -ne [int]$Payload.keepIf) { throw 'keep readback mismatch' }
+
+    $stage = 'sidecar-stage'
+    & $ops.WriteAllText $sTmp "$hash`n" ([Text.ASCIIEncoding]::new())
+
+    $stage = 'sidecar-verify'
+    $sBack = ((& $ops.ReadAllText $sTmp) -replace "`r", '').Trim()
+    if ($sBack -ne $hash) { throw "sidecar readback mismatch: wrote '$hash' got '$sBack'" }
+
+    $stage = 'sidecar-commit'
+    & $ops.Move $sTmp $side
+
+    $stage = 'json-commit'
+    & $ops.Move $tmp $BakPath
+
+    $stage = 'hash-confirm'
+    $committed = & $ops.Hash $BakPath
+    if ($committed -ne $hash) { throw "committed backup hash differs from the verified temp hash" }
+
+    $final = $hash
+    $done  = $true
+    $stage = 'done'
+  } catch {
+    $msg = $_.Exception.Message
+  }
+
+  if (-not $done) {
+    # Undo attempt. A failure here is itself recorded: it means a file may be
+    # left on disk, and the caller must report that instead of "nothing happened".
+    try {
+      & $ops.Remove $tmp
+      & $ops.Remove $sTmp
+      & $ops.Remove $side
+      & $ops.Remove $BakPath
+    } catch {
+      $msg = "$msg ; cleanup also failed: $($_.Exception.Message)"
+    }
+  }
+
+  $residual = @()
+  foreach ($p in @($tmp, $sTmp, $side, $BakPath)) {
+    try { if (& $ops.Exists $p) { $residual += $p } } catch { }
+  }
+
+  return [pscustomobject]@{
+    Ok = $done; Stage = $stage; Message = $msg; Residual = $residual; FinalHash = $final
+  }
+}
+
+function Get-PrecheckDrift {
+  <#
+    Pure restore-precheck (no adapter access): given the backup and the CURRENT
+    field values of every interface it would write, return the drift list.
+
+    REV-008 R-3b: Set-NetIPInterface -InterfaceMetric AUTOMATICALLY disables
+    AutomaticMetric (official docs). apply therefore leaves a changed adapter in
+    (TargetMetric, Disabled), not (TargetMetric, OriginalAuto). The allowed set
+    for a changed adapter's AutomaticMetric is consequently
+      { OriginalAuto   (apply has not run yet / partially run)
+        Disabled       (apply ran and the setter disabled it) }
+    and nothing else - in particular not "Enabled" on an adapter whose original
+    was Disabled, which would be a third party re-enabling it.
+  #>
+  param($Backup, [hashtable]$Rows, [scriptblock]$NameDrift)
+
+  $drift = @()
+  foreach ($e in @($Backup.changed)) {
+    $idx = [int]$e.ifIndex
+    $now = $Rows[$idx]
+    if (-not $now) { $drift += [pscustomobject]@{ ifIndex=$idx; Name=$e.Name; Field='-'; Expect='present'; Now='(missing)'; Why='interface gone' }; continue }
+    if (& $NameDrift $e.Name $now.Name) {
+      $drift += [pscustomobject]@{ ifIndex=$idx; Name=$e.Name; Field='Name'; Expect=$e.Name; Now=$now.Name; Why='ifIndex now belongs to a different adapter' }
+    }
+    if ([int]$now.Metric -ne [int]$e.TargetMetric -and [int]$now.Metric -ne [int]$e.OriginalMetric) {
+      $drift += [pscustomobject]@{ ifIndex=$idx; Name=$e.Name; Field='Metric'; Expect="$($e.OriginalMetric)/$($e.TargetMetric)"; Now=$now.Metric; Why='neither original nor target' }
+    }
+    $autoOk = (@("$($e.OriginalAuto)", 'Disabled') -contains "$($now.Auto)")
+    if (-not $autoOk) {
+      $drift += [pscustomobject]@{ ifIndex=$idx; Name=$e.Name; Field='AutomaticMetric'; Expect="$(if("$($e.OriginalAuto)" -eq 'Disabled'){'Disabled'}else{"$($e.OriginalAuto)/Disabled"})"; Now=$now.Auto; Why='expected the original value or the value the metric setter leaves behind' }
+    }
+  }
+  $k = $Backup.keep
+  if (-not $k) {
+    $drift += [pscustomobject]@{ ifIndex=0; Name='(keep)'; Field='-'; Expect='record'; Now='(missing)'; Why='backup has no keep record' }
+    return $drift
+  }
+  $kIdx = [int]$k.ifIndex
+  $know = $Rows[$kIdx]
+  if (-not $know) { $drift += [pscustomobject]@{ ifIndex=$kIdx; Name=$k.Name; Field='-'; Expect='present'; Now='(missing)'; Why='keep interface gone' } }
+  else {
+    if (& $NameDrift $k.Name $know.Name) {
+      $drift += [pscustomobject]@{ ifIndex=$kIdx; Name=$k.Name; Field='Name'; Expect=$k.Name; Now=$know.Name; Why='ifIndex now belongs to a different adapter' }
+    }
+    if ([int]$know.Metric -ne [int]$k.TargetMetric -and [int]$know.Metric -ne [int]$k.OriginalMetric) {
+      $drift += [pscustomobject]@{ ifIndex=$kIdx; Name=$k.Name; Field='Metric'; Expect="$($k.OriginalMetric)/$($k.TargetMetric)"; Now=$know.Metric; Why='neither original nor target' }
+    }
+    if ("$($know.Auto)" -ne 'Disabled' -and "$($know.Auto)" -ne "$($k.OriginalAuto)") {
+      $drift += [pscustomobject]@{ ifIndex=$kIdx; Name=$k.Name; Field='AutomaticMetric'; Expect="Disabled/$($k.OriginalAuto)"; Now=$know.Auto; Why='expected the pinned value or the original' }
+    }
+  }
+  return $drift
+}
+
+# ------------------------------------------------------------ tx self-test
+if ($Action -eq 'tx-selftest') {
+  <#
+    Fault injection for the two-phase backup commit (REV-008 ③/④).
+    Runs entirely in a temp directory. It never calls Set-NetIPInterface and
+    never touches a real adapter or the real backup directory.
+  #>
+  $work = Join-Path $env:TEMP ("civlink-tx-selftest-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+  New-Item -ItemType Directory -Force -Path $work | Out-Null
+  Write-Head ("[tx-selftest] isolated directory: {0}" -f $work)
+
+  $payload = [pscustomobject]@{
+    schema='4'; kind='apply'; takenAt=(Get-Date).ToString('o'); host=$env:COMPUTERNAME
+    peerIp='192.0.2.10'; keepIf=10
+    keep=[pscustomobject]@{ ifIndex=10; Name='TEST-KEEP'; OriginalMetric=45; OriginalAuto='Enabled'; TargetMetric=45 }
+    changed=@([pscustomobject]@{ ifIndex=18; Name='TEST-RAISE'; OriginalMetric=1; OriginalAuto='Enabled'; TargetMetric=1045; TargetAuto='Disabled' })
+  }
+
+  $realOps = $script:TxOps
+  $results = @()
+  $failStages = @('json-stage','json-hash','json-verify','sidecar-stage','sidecar-verify','sidecar-commit','json-commit','hash-confirm','cleanup')
+  $n = 0
+  foreach ($st in $failStages) {
+    $n++
+    $bak = Join-Path $work ("case{0}-{1}.json" -f $n, $st)
+    # one operation fails; everything else behaves normally
+    $inj = @{}
+    foreach ($k2 in $realOps.Keys) { $inj[$k2] = $realOps[$k2] }
+    switch ($st) {
+      'json-stage'    { $inj.OpenCreateNew = { param($p) throw 'injected: cannot create temp json' } }
+      'json-hash'     { $inj.Hash          = { param($p) if ("$p" -like '*.tmp') { throw 'injected: hash failed' } (Get-FileHash $p -Algorithm SHA256).Hash } }
+      'json-verify'   { $inj.ReadAllText   = { param($p) if ("$p" -like '*.tmp') { '{"schema":1}' } else { [IO.File]::ReadAllText($p,[Text.Encoding]::UTF8) } } }
+      'sidecar-stage' { $inj.WriteAllText  = { param($p,$t,$e) if ("$p" -like '*.sha256.tmp') { throw 'injected: cannot write sidecar temp' } [IO.File]::WriteAllText($p,$t,$e) } }
+      'sidecar-verify'{ $inj.ReadAllText   = { param($p) if ("$p" -like '*.sha256.tmp') { 'deadbeef' + "`n" } else { [IO.File]::ReadAllText($p,[Text.Encoding]::UTF8) } } }
+      'sidecar-commit'{ $inj.Move          = { param($s,$d) if ("$d" -like '*.sha256') { throw 'injected: sidecar commit failed' } Move-Item -Path $s -Destination $d -ErrorAction Stop } }
+      'json-commit'   { $inj.Move          = { param($s,$d) if ("$d" -like '*.json') { throw 'injected: json commit failed' } Move-Item -Path $s -Destination $d -ErrorAction Stop } }
+      'hash-confirm'  { $inj.Hash          = { param($p) if ("$p" -like '*.json' -and "$p" -notlike '*.tmp') { ('0' * 64) } else { (Get-FileHash $p -Algorithm SHA256).Hash } } }
+      'cleanup'       { $inj.Remove        = { param($p) if ("$p" -like '*.sha256.tmp') { throw 'injected: cleanup failed' } if (Test-Path $p) { Remove-Item $p -Force -ErrorAction SilentlyContinue } } }
+    }
+    $script:TxOps = $inj
+    try { $r = Invoke-BackupTx -Payload $payload -BakPath $bak } finally { $script:TxOps = $realOps }
+
+    $jsonExists    = Test-Path $bak
+    $sidecarExists = Test-Path "$bak.sha256"
+    $sidecarValid  = $false
+    if ($sidecarExists) {
+      $sv = (Get-Content "$bak.sha256" -Raw -ErrorAction SilentlyContinue)
+      $sv = if ($null -eq $sv) { '' } else { $sv.Trim() }
+      $sidecarValid = ($sv -match '^[0-9A-Fa-f]{64}$') -and ($sv.ToUpperInvariant() -eq (Get-FileHash $bak -Algorithm SHA256).Hash)
+    }
+    $okCase = (-not $r.Ok) -and (-not $jsonExists) -and (-not $sidecarValid)
+    if ($st -eq 'cleanup') {
+      # The injected cleanup failure is EXPECTED to leave files behind; what must
+      # hold is that the transaction reported failure and listed the leftovers.
+      $okCase = (-not $r.Ok) -and ($r.Residual.Count -gt 0) -and ($r.Message -match 'cleanup also failed')
+      Remove-Item (Join-Path $work '*') -Force -ErrorAction SilentlyContinue
+    }
+    $results += [pscustomobject]@{
+      Stage=$st; Ok=$okCase; ReportedFailure=(-not $r.Ok); StageSeen=$r.Stage
+      JsonLeft=$jsonExists; SidecarLeft=$sidecarExists; SidecarValid=$sidecarValid
+      Residual=$r.Residual.Count; Message=$r.Message
+    }
+  }
+
+  # success case: both files must exist, sidecar must verify, hash must match
+  $bakOk = Join-Path $work 'case-ok.json'
+  $script:TxOps = $realOps
+  $ok = Invoke-BackupTx -Payload $payload -BakPath $bakOk
+  $okHash = if (Test-Path $bakOk) { (Get-FileHash $bakOk -Algorithm SHA256).Hash } else { '' }
+  $sideOk = if (Test-Path "$bakOk.sha256") { ((Get-Content "$bakOk.sha256" -Raw).Trim()) } else { '' }
+  $okCase2 = $ok.Ok -and (Test-Path $bakOk) -and (Test-Path "$bakOk.sha256") -and ($sideOk -eq $okHash) -and ($ok.Residual.Count -eq 0)
+
+  Write-Host ''
+  Write-Host ' stage            ok  reported  stageSeen        jsonLeft sidecarLeft sidecarValid residual' -ForegroundColor Cyan
+  foreach ($r in $results) {
+    $mark = if ($r.Ok) { 'PASS' } else { 'FAIL' }
+    $line = "    {0,-15} {1,-5} {2,-9} {3,-16} {4,-8} {5,-11} {6,-12} {7}" -f $r.Stage, $mark, $r.ReportedFailure, $r.StageSeen, $r.JsonLeft, $r.SidecarLeft, $r.SidecarValid, $r.Residual
+    if ($r.Ok) { Write-Host $line } else { Write-Host $line -ForegroundColor Red }
+  }
+  $line2 = "    {0,-15} {1,-5}" -f 'success-path', $(if ($okCase2) { 'PASS' } else { 'FAIL' })
+  if ($okCase2) { Write-Host $line2 } else { Write-Host $line2 -ForegroundColor Red }
+
+  # precheck cases (REV-008 ③): plain data, no adapters involved
+  $nd = { param($a, $b) return ("$a" -ne "$b") }
+  $bk = [pscustomobject]@{
+    keep=[pscustomobject]@{ ifIndex=10; Name='WLAN'; OriginalMetric=45; OriginalAuto='Enabled'; TargetMetric=45 }
+    changed=@([pscustomobject]@{ ifIndex=18; Name='Radmin VPN'; OriginalMetric=1; OriginalAuto='Enabled'; TargetMetric=1045; TargetAuto='Disabled' })
+  }
+  $p1 = @{ 10=@{ ifIndex=10; Name='WLAN'; Metric=45; Auto='Disabled' }
+           18=@{ ifIndex=18; Name='Radmin VPN'; Metric=1045; Auto='Disabled' } }
+  $p2 = @{ 10=@{ ifIndex=10; Name='WLAN'; Metric=45; Auto='Disabled' }
+           18=@{ ifIndex=18; Name='Radmin VPN'; Metric=9966; Auto='Disabled' } }
+  $p3 = @{ 10=@{ ifIndex=10; Name='WLAN'; Metric=45; Auto='Disabled' }
+           18=@{ ifIndex=18; Name='Radmin VPN'; Metric=1045; Auto='Enabled' } }
+  $c1 = @(Get-PrecheckDrift -Backup $bk -Rows $p1 -NameDrift $nd).Count   # applied with OriginalAuto=Enabled -> must pass
+  $c2 = @(Get-PrecheckDrift -Backup $bk -Rows $p2 -NameDrift $nd).Count   # foreign metric -> must fail
+  $c3 = @(Get-PrecheckDrift -Backup $bk -Rows $p3 -NameDrift $nd).Count   # third party re-enabled -> must fail
+  Write-Host ''
+  Write-Host (" [precheck] applied(orig Auto=Enabled) drift={0} (want 0) | foreign metric drift={1} (want >0) | auto re-enabled drift={2} (want >0)" -f $c1, $c2, $c3) -ForegroundColor Cyan
+  $pcOk = ($c1 -eq 0 -and $c2 -gt 0 -and $c3 -gt 0)
+
+  Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+
+  $allOk = ($results | Where-Object { -not $_.Ok }).Count -eq 0
+  Write-Host ''
+  if ($allOk -and $okCase2 -and $pcOk) {
+    Write-Ok '[PASS] two-phase commit fault injection + precheck cases'
+    exit 0
+  }
+  Write-Bad '[FAIL] see the table above'
+  exit 2
+}

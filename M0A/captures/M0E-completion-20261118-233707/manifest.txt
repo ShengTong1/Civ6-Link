@@ -1,0 +1,7 @@
+# M0-E discovery completion self-test
+# out: C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\M0A\captures\M0E-completion-20261118-233707
+# agent: C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\civlink\civlink-agent.exe
+# agent sha256: AA3EA66612FDD8211E9608C90F74A55D6FFAF7789F3D3DC0E2748771500A16EE
+
+E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855  0  agent-run1-stderr.txt
+E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855  0  agent-run1-stdout.txt

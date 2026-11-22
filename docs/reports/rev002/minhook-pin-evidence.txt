@@ -1,0 +1,27 @@
+﻿MinHook pin evidence:
+--- build script pin lines ---
+REM Locates vcvars64.bat automatically (VCVARS env var overrides); MinHook pinned v1.3.4
+REM is cloned to ..\deps\MinHook (BSD-2, build-time dependency only).
+if not exist "..\deps\MinHook\include\MinHook.h" (
+    echo [*] cloning MinHook v1.3.4 ...
+    git clone --depth 1 --branch v1.3.4 https://github.com/TsudaKageyu/minhook.git "..\deps\MinHook"
+cl /nologo /utf-8 /O2 /MT /EHsc /D_WIN32_WINNT=0x0601 /D_CRT_SECURE_NO_WARNINGS /I..\deps\MinHook\include ^
+   trace_dll.cpp ..\deps\MinHook\src\buffer.c ..\deps\MinHook\src\hook.c ^
+   ..\deps\MinHook\src\trampoline.c ..\deps\MinHook\src\HDE\hde32.c ^
+   ..\deps\MinHook\src\HDE\hde64.c ^
+# 依赖：MinHook 源码（BSD-2），锁定 v1.3.4。在 CivLink-M0A-audit 根目录执行：
+#   git clone --depth 1 --branch v1.3.4 https://github.com/TsudaKageyu/minhook.git deps/MinHook
+            -I../deps/MinHook/include
+MINHOOK_SRCS := ../deps/MinHook/src/buffer.c \
+                ../deps/MinHook/src/hook.c \
+                ../deps/MinHook/src/trampoline.c \
+                ../deps/MinHook/src/HDE/hde32.c \
+                ../deps/MinHook/src/HDE/hde64.c
+civtrace.dll: trace_dll.cpp $(MINHOOK_SRCS)
+--- git log ---
+HEAD: 8af6b4acae5a9388fd742b56fa79ece89d96f823
+date: 2026-09-08 02:58:59 +0300
+subject: Update and fix Hacker Disassembler Engine (2)
+--- status ---
+--- MinHook.h version macro ---
+#define MH_ALL_HOOKS NULL

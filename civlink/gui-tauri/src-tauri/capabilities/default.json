@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability: shell execute for whitelisted civlink binaries only.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-execute",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        { "name": "civlink_ctl.exe", "sidecar": false },
+        { "name": "civlink-agent.exe", "sidecar": false }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,244 @@
+# M0-E：发现补全器（Discovery Completion，loopback 重放架构）
+
+> 版本：**v1.0**（2026-11-18）
+> 状态：**设计稿，待审计**
+> 前置事实来源：`C:\Users\dd\Desktop\injciv6-v0.3.3\局域网发现方案独立研究.md`（46,737 B / 462 行）+ 本轮 A 机真实游戏实测（`M0A\captures\C3-loopback-replay-20261118-2235`、`M0A\captures\C3-fullchain-20261118-2240`）
+> 项目负责人目标（m29860，逐字）：「我最终不希望在客户端看到虚拟的房间……我最后想实现的是，服务端的Agent绑定99个端口+文明6游戏本身建房之后就固定绑定的62900端口，共计100个端口。无论哪个端口收到客户端发来的请求，都会将服务端创建的真实房间应答回客户端，让客户端可以进入房间，正常游戏。」
+
+---
+
+## 1. 要解决的问题
+
+Civ6 局域网发现的结构性缺陷（实测确认）：
+
+| 事实 | 数值 | 证据来源 |
+|---|---|---|
+| 房主建房后监听的发现端口 | **仅 62900**（`0.0.0.0:62900`） | A 机 `Get-NetUDPEndpoint` pid 43872 实测 |
+| 客户端"刷新"发出 | 向 `255.255.255.255:62900..62999` 各 1 包（100 包），载荷 4B `8D E8 FC 70` | E2-B / F0 抓包 |
+| 房主应答 | 从 `62900` 单播 22 页 × 1104B 到客户端源地址:源端口 | E2-B / B1 §0 取证 |
+| 名义冗余 vs 实际冗余 | 发 100 包，收 1 个 socket → **有效尝试次数 = 1** | 独立研究 A1 |
+| 网卡层丢包 | 66~94/100 到达（丢 6%~34%） | E2-B 首轮 |
+
+**结论**：任一次丢包、任一防火墙/VPN 干扰，都直接 1:1 放大成"搜不到房间"。这是**结构性缺陷**，不是环境问题。
+
+## 2. 设计目标（用户目标的可执行化）
+
+1. 房主侧让 **62900..62999 全部 100 个端口**都能"接住"客户端请求。
+2. 应答内容必须是**房主真实房间**（不是 fixture、不是虚拟房）。
+3. 客户端看到房间后能**正常进入并游戏**。
+4. **不注入游戏进程**（尽可能）；不装驱动；尽量不需要管理员。
+5. 不破坏"房主能随时重新建房"（m25442 的 62900 冲突）。
+
+## 3. 核心机制：loopback 重放
+
+```
+[客户端 B]  广播 magic → 房主 A 的 62900..62999（100 个包）
+                              ↓
+[agent A]   绑 62901..62999（62900 留给游戏）中的 99 个
+            任一端口 P 收到 magic
+                              ↓
+            用【转发 socket（绑 0.0.0.0）】把同一个 magic 单播给
+            127.0.0.1:62900
+                              ↓
+[Civ6 A]    以为是本机客户端在找房间 → 从 62900 回 22 页真实广告
+            到转发 socket 的源地址:源端口（127.0.0.1:ephemeral）
+                              ↓
+[agent A]   收齐 22 页 → 用【收到请求的那个监听 socket P】原样转发给
+            客户端的真实 (IP, 源端口)
+                              ↓
+[客户端 B]  看到应答源 = 房主A_IP:P，内容 = 真实房间 → 列表显示真实房
+```
+
+**关键性质**：agent **从不生成任何数据**。它只把请求转达给游戏，再把游戏的真实应答转回去。因此：
+
+- 房名、mod 列表永远真实（游戏自己生成）。
+- 不存在"虚拟房"与真实房并存/去重冲突。
+- 不需要 hook 注入、不需要缓存、没有冷启动问题。
+
+## 4. 本轮实测证据（已通过）
+
+### 4.1 定向验证：游戏是否对 loopback 重放应答
+
+脚本 `M0A\c3-loopback-replay-probe.py`，A 机真实建房（pid 43872，持有 `0.0.0.0:62900`）：
+
+```
+forward socket bound: 0.0.0.0:61758
+discovery socket bound 0.0.0.0:62901 OK
+replayed magic to 127.0.0.1:62900 from ('0.0.0.0', 61758)
+replies received: 22
+  page 01..22  len=1104  head=5960699b  from=127.0.0.1:62900
+control (192.168.31.60 bound) sendto 127.0.0.1 FAILED: OSError(10049)
+```
+
+**结论 1**：游戏对 loopback 重放**正常应答完整 22 页**。
+**结论 2**：研究警告的"转发 socket 必须绑 `0.0.0.0`"实测成立——绑具体 LAN IP 时 `sendto 127.0.0.1` 报 `WinError 10049`。
+**结论 3**：研究标注的疑点"游戏可能校验探测源必须在本地子网"**被证伪**——源是 `127.0.0.1` 也照常应答。
+
+### 4.2 内容真实性
+
+`page-01.bin` 偏移 24..46 = `dingzihan2022的游戏`（UTF-8），即房主真实房名。
+
+### 4.3 源地址独立性（关键安全性质）
+
+用两个不同源端口重放两次，逐字节比对：
+
+```
+replay A srcport=62456  replay B srcport=62457
+byte-identical across different source ports: True
+  127.0.0.1 bytes       present in any page: False
+  LAN 192.168.31.60     present in any page: False
+  srcport A/B           present in any page: False
+```
+
+**结论 4**：22 页载荷与探测源地址、源端口**完全无关**。因此 loopback 重放不会把 `127.0.0.1` 泄漏进广告内容，客户端不会看到错误地址。研究标注的疑点"游戏可能把源写进应答字段"**被证伪**。
+
+### 4.4 确定性
+
+两次独立重放 `identical across replays: True` → 应答是无时间戳/无随机数的确定性内容（这也意味着可安全缓存，但本设计选择不缓存，见 §7）。
+
+### 4.5 全链路
+
+脚本 `M0A\c3-fullchain-probe.py`：
+
+```
+模拟客户端 127.0.0.1:60266 → agent(0.0.0.0:62901) 收到 4B magic ✓
+agent → 重放给 127.0.0.1:62900 → 游戏回 22 页 ✓
+agent → 22 页转发给客户端 → 客户端收到 22 个包 ✓
+客户端看到的源 = 127.0.0.1:62901（跨机时为 房主IP:62901）
+```
+
+**全链路 22/22 成功。**
+
+## 5. agent 侧实现设计
+
+### 5.1 新增 CLI
+
+```
+--discovery-completion
+    启用补全器模式：收到的发现 magic 不再用 fixture/缓存应答，
+    而是 loopback 重放给本机游戏，转发游戏的真实应答。
+
+--game-discovery-addr <IP:PORT>
+    本机游戏的发现监听地址，默认 127.0.0.1:62900。
+
+--completion-timeout-ms <N>
+    单次重放等待游戏应答的超时，默认 1000ms。
+
+--completion-max-pages <N>
+    单次重放最多收集的页数，默认 22（防御性上限，超出丢弃）。
+```
+
+约束：
+- `--discovery-completion` 与 `--sim-lan-listen` 一起用时，**忽略 `--simulate`**（不需要 fixture）。
+- `--discovery-completion` **必须与 `--reserve-62900` 同时生效**（agent 绝不能绑 62900，否则会劫持游戏的单播——研究实测 `SO_REUSEADDR` 陷阱）。实现上：模式开启时**强制** reserve 语义，无论用户是否显式给 `--reserve-62900`，并在 stderr 明确打印。
+- 不允许与 `--sim-real-capture` 同时使用（避免两套应答路径竞争），启动时报错。
+
+### 5.2 数据结构
+
+```rust
+struct CompletionState {
+    /// Dedicated socket for talking to the local game. MUST be bound to 0.0.0.0
+    /// (a socket bound to a concrete LAN IP cannot send to 127.0.0.1: WinError 10049).
+    forward: UdpSocket,
+    game_addr: SocketAddr,          // default 127.0.0.1:62900
+    timeout: Duration,
+    max_pages: usize,
+    stats: CompletionStats,
+}
+
+struct CompletionStats {
+    requests_intercepted: u64,  // magic received on a completion port
+    replays_sent: u64,          // magic successfully sent to the game
+    replays_failed: u64,        // sendto failed
+    pages_collected: u64,       // pages received from the game
+    pages_forwarded: u64,       // pages successfully sent to the client
+    forwards_failed: u64,
+    timeouts: u64,              // replay produced no pages within timeout
+    empty_replies: u64,         // game answered with 0 pages
+}
+```
+
+### 5.3 处理流程（同步、在 poll 内）
+
+对每个监听端口 `L` 上收到的 4B magic，`from = client_addr`：
+
+1. `forward.send_to(MAGIC, game_addr)`；失败 → `replays_failed += 1`，**不应答**（fail-closed，不伪造）。
+2. 进入收集循环，直到 `max_pages` 页或 `timeout` 到期：
+   - `forward.recv_from` 收页；只接受**源地址 == game_addr 的 IP** 的包（防串扰），长度在 `[SIM_PAGE_SIZE-?]` 范围内接受任意长度（不硬编码 1104，兼容版本差异，但计数分桶）。
+   - 超时 → `timeouts += 1`；0 页 → `empty_replies += 1`；**两种情况都不向客户端应答**（宁可让客户端这次没搜到，也不伪造内容）。
+3. 逐页 `L.send_to(page, client_addr)`；成功 `pages_forwarded += 1`，失败 `forwards_failed += 1`。
+   - **从 `L` 发出**，保证客户端看到的源 = `房主IP:P`（与它发包的目标端口一致）。
+
+**串行化说明**：`poll` 当前是单线程非阻塞 drain。补全处理会阻塞约 `timeout` 毫秒，期间该端口的其它请求排队。由于一次刷新是 100 个包几乎同时到达不同端口，串行处理会导致后续端口延迟累积（最坏 100 × timeout）。**对策**：
+- 去重仍按 `(client_ip, client_port)`：同一客户端的一次刷新只处理**第一个**到达的 magic，其余 99 个仍按"已应答"跳过（保持现有 `answered` 语义），因此**每个客户端刷新只触发一次重放**，总阻塞 ≈ 1 × timeout。
+- `timeout` 默认 1000ms，但实测游戏应答在**毫秒级**（22 页在数毫秒内到齐），所以实际阻塞远小于超时。
+
+### 5.4 与现有 LanSimState 的关系
+
+`LanSimState` 保持现状（fixture / real-page 两条应答路径）。新增字段：
+
+```rust
+completion: Option<CompletionState>,
+```
+
+`poll` 中 magic 分支改为：
+
+```rust
+if let Some(comp) = self.completion.as_mut() {
+    // completion mode: never fabricate a reply
+    let outcome = comp.handle(&self.listeners[i], &buf[..len], &from, &mut self.answered);
+    ...
+} else {
+    // existing fixture / real-page path (unchanged)
+}
+```
+
+去重键与 `answered` 表复用（保持 100 包只答一次的语义）。
+
+## 6. 客户端侧（不变，C2）
+
+`civlink_client.dll` 的 `--iface <IP>`（`IP_UNICAST_IF`）继续负责"让广播从指定网卡出去"。**本轮实测再次确认 `IP_UNICAST_IF` 对 limited broadcast 生效**（独立研究 D 节，四接口实测）。
+
+## 7. 明确不做的事（边界）
+
+1. **不缓存游戏应答**。虽然实测内容确定性，但缓存会在"房主改了 mod / 换地图 / 重建房"时返回过期内容。**每次现问游戏**。这是本设计与 B1 捕获路线的根本区别。
+2. **不伪造任何页**。游戏不应答时（超时/0 页），agent 静默不应答，客户端表现为"这次没搜到"。
+3. **不绑定 62900**。强制 reserve，避免劫持游戏单播。
+4. **不处理 62056 数据面**。发现通了之后，客户端"加入"会连 `房主IP:62056`（游戏自己的 socket）。**这一层本轮不在范围内**——但独立研究 A12 提醒"62056 才是第二道坎"，所以 §9 列为后续必做。
+5. **不注入游戏进程**。本设计房主侧零注入。
+
+## 8. 不证明 / 未验证
+
+1. **跨机真实链路未验证**。本轮全部是 A 机本机 loopback 验证（客户端也在本机）。跨机时客户端是另一台机器，`from` 是真实 LAN 地址，回包走物理网卡——**必须 PC-B 复测**。
+2. **客户端是否接受"源端口 = 请求目标端口"的应答**。本机测试客户端是自写脚本，不是 Civ6。真实 Civ6 客户端的行为**未验证**（但它既然是向该端口发的，从该端口回是最自然的形态）。
+3. **22 页是否容忍丢失**。若转发中丢 1~2 页，客户端是否仍能解析出房间——**未验证**。
+4. **真实 Civ6 客户端 + 真实房间的端到端"能看到并进入"** 未验证。
+5. **多人（≥3 客户端）同时刷新**的串行化表现未验证。
+
+## 9. 后续（本设计之外）
+
+1. 跨机验证（PC-B）—— 最高优先。
+2. 62056 数据面：若客户端"加入"后卡在连不上，需要数据面转发（独立研究 A12/B3 的 62056 代理）。
+3. 客户端侧是否还需要 `civlink_client.dll`（若补全器已解决 100/100 命中，钉网卡的价值下降，但虚拟网卡抢广播仍是独立问题）。
+
+## 10. 证据清单（本轮）
+
+| 文件 | 大小 | sha256（前 16） |
+|---|---|---|
+| `M0A\captures\C3-loopback-replay-20261118-2235\c3-probe-result-1.txt` | 4,080 B | `F03DADE4B0262207` |
+| 同上 `page-01.bin` … `page-22.bin` | 各 1,104 B | `DDC8CD34…` … `6F98152D…` |
+| 同上 `summary.json` | 2,012 B | `3118D9AF37C95D7E` |
+| `M0A\captures\C3-fullchain-20261118-2240\log.txt` | 554 B | `B5DE376C63AFABDE` |
+| 同上 `summary.json` | 1,938 B | `BB185D192A8BA0A8` |
+
+脚本：`M0A\c3-loopback-replay-probe.py`（3,447 B）、`M0A\c3-capture-pages.py`（1,511 B）、`M0A\c3-fullchain-probe.py`（4,476 B）、`M0A\c3-source-embed-check.py`。
+
+## 11. 待审计问题（交给审计方）
+
+1. §5.3 的**同步阻塞**设计是否可接受？去重保证"每次刷新只重放一次"是否足够（同一客户端连续多次刷新、多客户端并发）？
+2. **fail-closed 不应答**是否是正确的产品选择？还是应该退化到 fixture（但那会引入虚拟房，违背用户目标）？
+3. 只接受 `源 IP == game_addr.ip()` 的包是否足够？是否会漏掉游戏从其它地址（如 `0.0.0.0` 或 LAN IP）回包的情况？
+4. **强制 reserve** 是否应允许用户覆盖（比如用户想让 agent 也绑 62900 的极端场景）？
+5. `--completion-max-pages` 与"不硬编码 1104"之间是否有隐患（页长度不一致时如何分桶）？
+6. 本设计与 B1（`--sim-real-capture`）互斥的处置是否正确？是否需要保留两者共存的可能？
+7. §8 列的未验证项是否完整？还有哪些必须实测才能进发布的点？

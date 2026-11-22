@@ -1,0 +1,17 @@
+M0-E MUTATION TEST
+mutations applied : 5/5
+mutations caught  : 5/5
+source restored   : True
+exe restored      : (Rust exe is not byte-reproducible; verified by source hash + selftest)
+restored selftest : PASS
+
+Each mutation must be caught by the check it targets; otherwise the self-test
+cannot tell a working completion path from a broken one.
+
+pristine source sha256 : E56A30562A94376B1982FCF184C2A81C791CF5B50B15218231712048E59A4276
+pristine exe sha256    : 899DF30F5AAEB8F05460858BCFAC3A979D1181B463044669D87E6A5E5A1B59E2
+M1  applied=True  caught=True  3C311222FF88E0B5ED9318BD71E27E90CFE7A1CED2DCF7C01CE86EF3509F8D1B     - silent target -> client received nothing (fail-closed)
+M2  applied=True  caught=True  1BE0546FAB81EF38691BD686FFEF20D14DDE8BF36A14AD99D5217EEFFEE37CE6     - every page came from the probed port :62902
+M4  applied=True  caught=True  76D81B275496F3311A7BCDF8B67A069526E76D85AF9E35EE7C1277E8A582F57A     - egress pin: summary reports the probed address as known;    - egress pin: summary reports 22 pinned pages;    - egress pin: summary reports 0 unpinned pages
+M5  applied=True  caught=True  E3BF463E264A994E51F82BE931215544FD21BDE8D5F0F3B90A0638B21D954EEC     - duplicate run: the game saw exactly one replay;    - duplicate run: replays sent == 1;    - duplicate run: duplicate magic == 2
+M3  applied=True  caught=True  9AF1252F0AC1EBA2689B30C44A9A3EC960DA6535593A01E0186B4291E5671317     - target received exactly one replay (no amplification);    - duplicate run: the game saw exactly one replay

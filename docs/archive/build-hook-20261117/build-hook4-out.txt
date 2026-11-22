@@ -1,0 +1,20 @@
+[*] vcvars: D:\MSVC\BuildTools\VC\Auxiliary\Build\vcvars64.bat
+[*] building civlink_hook.dll
+hook.cpp
+hook\hook.cpp(506): warning C4996: 'inet_addr': Use inet_pton() or InetPton() instead or define _WINSOCK_DEPRECATED_NO_WARNINGS to disable deprecated API warnings
+buffer.c
+hook.c
+trampoline.c
+hde32.c
+hde64.c
+正在生成代码...
+  正在创建库 civlink_hook.lib 和对象 civlink_hook.exp
+[*] checking exports
+[*] building civlink_ctl.exe
+civlink_ctl.cpp
+[*] building hook_selftest.exe
+hook_selftest.cpp
+[*] done
+    civlink_hook.dll  119808 B  sha256=0965154ACC92424B957FD77ED6DC7FF497366DCAEC9F7758902E5E47424CE14C
+    civlink_ctl.exe  173056 B  sha256=C2FC372269C9F75D09AA183356AFADB66442F1D3F33FD400315DEFFE67E8C3B1
+    hook_selftest.exe  150016 B  sha256=42E5C53AF198645A54125E5C47D53C9CA2A11FC6E8B33017FC07C343709242B6

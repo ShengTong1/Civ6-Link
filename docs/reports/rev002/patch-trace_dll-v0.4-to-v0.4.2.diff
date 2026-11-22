@@ -1,0 +1,706 @@
+﻿diff --git "a/docs\\reports\\rev002-baseline\\trace_dll.cpp" "b/civtrace\\trace_dll.cpp"
+index 5f48db4..2b142e0 100644
+--- "a/docs\\reports\\rev002-baseline\\trace_dll.cpp"
++++ "b/civtrace\\trace_dll.cpp"
+@@ -79,7 +79,7 @@
+ // ===================================================================
+ // 自持函数指针类型（不依赖头文件版本差异）
+ // ===================================================================
+-typedef int    (WSAAPI *T_socket)(int, int, int);
++typedef SOCKET (WSAAPI *T_socket)(int, int, int);
+ typedef SOCKET (WSAAPI *T_WSASocketA)(int, int, int, LPWSAPROTOCOL_INFOA, GROUP, DWORD);
+ typedef SOCKET (WSAAPI *T_WSASocketW)(int, int, int, LPWSAPROTOCOL_INFOW, GROUP, DWORD);
+ typedef int    (WSAAPI *T_bind)(SOCKET, const sockaddr*, int);
+@@ -160,7 +160,11 @@ static FILE*             g_log = nullptr;
+ static std::wstring      g_logPath;
+ static std::atomic<bool> g_stop{false};
+ static std::atomic<bool> g_shutdown{false};
+-static std::atomic<bool> g_inHook{false};   // 递归保险：日志路径若误调被钩 API 则透传不记
++static thread_local bool g_tlsInHook = false;  // REV-002 R2: 本线程递归透传（日志路径误调被钩 API 时透传）
++static std::atomic<long> g_inFlight{0};          // REV-002 R2: 在途 Hook 执行体计数（排空证明）
++// Hook 生命周期状态机（REV-002 R2）: RUNNING -> SHUTTING_DOWN -> COMPLETE/FAILED
++enum HookState : int { HS_RUNNING = 0, HS_SHUTTING_DOWN = 1, HS_COMPLETE = 2, HS_FAILED = 3 };
++static std::atomic<int> g_state{HS_RUNNING};
+ static std::thread       g_flusher;
+ static std::thread       g_init;
+ static HMODULE           g_hmod = nullptr;
+@@ -544,16 +548,16 @@ static void GuidName(const void* pg, char* out, size_t n) {
+ 
+ // ===================================================================
+ // Hook 实现（全部只观察；ErrTx 保存/恢复 last error）
+-// 约定：if (g_inHook) 透传（防日志路径误调被钩 API 的递归）；
++// 约定：if (g_tlsInHook) 透传（本线程日志路径误调被钩 API 的递归）；g_inFlight 计数供关闭排空
+ //       real 调用前预格式化参数；real 后立即 commit；日志后 end() 恢复。
+ // ===================================================================
+ 
+-static int WSAAPI Hook_socket(int af, int type, int protocol) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_socket(af, type, protocol);
+-    g_inHook.store(true, std::memory_order_relaxed);
++static SOCKET WSAAPI Hook_socket(int af, int type, int protocol) {
++    if (g_tlsInHook) return Real_socket(af, type, protocol);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+-    int r = Real_socket(af, type, protocol);
++    SOCKET r = Real_socket(af, type, protocol);
+     tx.commit(r == INVALID_SOCKET);
+     int e = tx.post.wsa;
+     if (r != INVALID_SOCKET) NoteSock((SOCKET)r, af, type, false);
+@@ -563,13 +567,13 @@ static int WSAAPI Hook_socket(int af, int type, int protocol) {
+              af, type, protocol, (unsigned long long)(SOCKET)r, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static SOCKET WSAAPI Hook_WSASocketA(int af, int type, int protocol, LPWSAPROTOCOL_INFOA pi, GROUP g, DWORD flags) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_WSASocketA(af, type, protocol, pi, g, flags);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_WSASocketA(af, type, protocol, pi, g, flags);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     SOCKET s = Real_WSASocketA(af, type, protocol, pi, g, flags);
+@@ -583,13 +587,13 @@ static SOCKET WSAAPI Hook_WSASocketA(int af, int type, int protocol, LPWSAPROTOC
+              (unsigned long long)s, cb, ErrTag((int)s, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return s;
+ }
+ 
+ static SOCKET WSAAPI Hook_WSASocketW(int af, int type, int protocol, LPWSAPROTOCOL_INFOW pi, GROUP g, DWORD flags) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_WSASocketW(af, type, protocol, pi, g, flags);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_WSASocketW(af, type, protocol, pi, g, flags);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     SOCKET s = Real_WSASocketW(af, type, protocol, pi, g, flags);
+@@ -603,13 +607,13 @@ static SOCKET WSAAPI Hook_WSASocketW(int af, int type, int protocol, LPWSAPROTOC
+              (unsigned long long)s, cb, ErrTag((int)s, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return s;
+ }
+ 
+ static int WSAAPI Hook_bind(SOCKET s, const sockaddr* name, int namelen) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_bind(s, name, namelen);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_bind(s, name, namelen);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     char sb[128], ab[96];
+@@ -624,13 +628,13 @@ static int WSAAPI Hook_bind(SOCKET s, const sockaddr* name, int namelen) {
+     snprintf(line, sizeof line, "bind %s addr=%s ret=%d caller=%s%s", sb, ab, r, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_sendto(SOCKET s, const char* buf, int len, int flags, const sockaddr* to, int tolen) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_sendto(s, buf, len, flags, to, tolen);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_sendto(s, buf, len, flags, to, tolen);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     char sb[128], ab[96], hx[96];
+@@ -646,14 +650,14 @@ static int WSAAPI Hook_sendto(SOCKET s, const char* buf, int len, int flags, con
+              sb, ab, len, r, hx, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_WSASendTo(SOCKET s, LPWSABUF bufs, DWORD cnt, LPDWORD sent, DWORD flags,
+                                  const sockaddr* to, int tolen, LPWSAOVERLAPPED ov, LPWSAOVERLAPPED_COMPLETION_ROUTINE cr) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_WSASendTo(s, bufs, cnt, sent, flags, to, tolen, ov, cr);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_WSASendTo(s, bufs, cnt, sent, flags, to, tolen, ov, cr);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     char sb[128], ab[96], hx[96];
+@@ -669,13 +673,13 @@ static int WSAAPI Hook_WSASendTo(SOCKET s, LPWSABUF bufs, DWORD cnt, LPDWORD sen
+              sb, ab, (unsigned)cnt, OvTag(r, e, ov), r, hx, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_recvfrom(SOCKET s, char* buf, int len, int flags, sockaddr* from, int* fromlen) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_recvfrom(s, buf, len, flags, from, fromlen);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_recvfrom(s, buf, len, flags, from, fromlen);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     char sb[128], ab[96], hx[96];
+@@ -692,14 +696,14 @@ static int WSAAPI Hook_recvfrom(SOCKET s, char* buf, int len, int flags, sockadd
+              sb, r, ab, r >= 0 ? r : 0, hx, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_WSARecvFrom(SOCKET s, LPWSABUF bufs, DWORD cnt, LPDWORD bytes, LPDWORD flags,
+                                    sockaddr* from, LPINT fromlen, LPWSAOVERLAPPED ov, LPWSAOVERLAPPED_COMPLETION_ROUTINE cr) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_WSARecvFrom(s, bufs, cnt, bytes, flags, from, fromlen, ov, cr);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_WSARecvFrom(s, bufs, cnt, bytes, flags, from, fromlen, ov, cr);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     char sb[128], ab[96], hx[96];
+@@ -718,13 +722,13 @@ static int WSAAPI Hook_WSARecvFrom(SOCKET s, LPWSABUF bufs, DWORD cnt, LPDWORD b
+              sb, r, ab, (unsigned)cnt, OvTag(r, e, ov), hx, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_select(int nfds, fd_set* rset, fd_set* wset, fd_set* eset, const timeval* tv) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_select(nfds, rset, wset, eset, tv);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_select(nfds, rset, wset, eset, tv);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     char rb[200], wb[200], eb[200];
+@@ -740,13 +744,13 @@ static int WSAAPI Hook_select(int nfds, fd_set* rset, fd_set* wset, fd_set* eset
+              rb, wb, eb, tv ? "set" : "null(inf)", r, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_closesocket(SOCKET s) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_closesocket(s);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_closesocket(s);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     char sb[128];
+@@ -760,13 +764,13 @@ static int WSAAPI Hook_closesocket(SOCKET s) {
+     snprintf(line, sizeof line, "closesocket %s ret=%d caller=%s%s", sb, r, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_ioctlsocket(SOCKET s, long cmd, u_long* argp) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_ioctlsocket(s, cmd, argp);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_ioctlsocket(s, cmd, argp);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     int r = Real_ioctlsocket(s, cmd, argp);
+@@ -783,13 +787,13 @@ static int WSAAPI Hook_ioctlsocket(SOCKET s, long cmd, u_long* argp) {
+                  (unsigned long long)s, (unsigned long)cmd, r, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_setsockopt(SOCKET s, int level, int optname, const char* optval, int optlen) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_setsockopt(s, level, optname, optval, optlen);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_setsockopt(s, level, optname, optval, optlen);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     char on[48];
+@@ -805,13 +809,13 @@ static int WSAAPI Hook_setsockopt(SOCKET s, int level, int optname, const char*
+              (unsigned long long)s, on, val, r, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_getsockopt(SOCKET s, int level, int optname, char* optval, int* optlen) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_getsockopt(s, level, optname, optval, optlen);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_getsockopt(s, level, optname, optval, optlen);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     char on[48];
+@@ -833,13 +837,13 @@ static int WSAAPI Hook_getsockopt(SOCKET s, int level, int optname, char* optval
+                  (unsigned long long)s, on, r, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_connect(SOCKET s, const sockaddr* name, int namelen) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_connect(s, name, namelen);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_connect(s, name, namelen);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     char ab[96];
+@@ -853,13 +857,13 @@ static int WSAAPI Hook_connect(SOCKET s, const sockaddr* name, int namelen) {
+              (unsigned long long)s, ab, r, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_getsockname(SOCKET s, sockaddr* name, int* namelen) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_getsockname(s, name, namelen);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_getsockname(s, name, namelen);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     int r = Real_getsockname(s, name, namelen);
+@@ -874,13 +878,13 @@ static int WSAAPI Hook_getsockname(SOCKET s, sockaddr* name, int* namelen) {
+              (unsigned long long)s, ab, r, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_getpeername(SOCKET s, sockaddr* name, int* namelen) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_getpeername(s, name, namelen);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_getpeername(s, name, namelen);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     int r = Real_getpeername(s, name, namelen);
+@@ -895,13 +899,13 @@ static int WSAAPI Hook_getpeername(SOCKET s, sockaddr* name, int* namelen) {
+              (unsigned long long)s, ab, r, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_WSAEventSelect(SOCKET s, WSAEVENT ev, long events) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_WSAEventSelect(s, ev, events);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_WSAEventSelect(s, ev, events);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     int r = Real_WSAEventSelect(s, ev, events);
+@@ -916,13 +920,13 @@ static int WSAAPI Hook_WSAEventSelect(SOCKET s, WSAEVENT ev, long events) {
+              (unsigned long long)s, (void*)ev, (unsigned long)events, em, r, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_WSAAsyncSelect(SOCKET s, HWND hwnd, u_int msg, long events) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_WSAAsyncSelect(s, hwnd, msg, events);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_WSAAsyncSelect(s, hwnd, msg, events);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     int r = Real_WSAAsyncSelect(s, hwnd, msg, events);
+@@ -937,13 +941,13 @@ static int WSAAPI Hook_WSAAsyncSelect(SOCKET s, HWND hwnd, u_int msg, long event
+              (unsigned long long)s, (void*)hwnd, (unsigned)msg, (unsigned long)events, em, r, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_WSAPoll(CVL_POLLFD* fds, ULONG nfds, int timeout) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_WSAPoll(fds, nfds, timeout);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_WSAPoll(fds, nfds, timeout);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     int r = Real_WSAPoll(fds, nfds, timeout);
+@@ -959,14 +963,14 @@ static int WSAAPI Hook_WSAPoll(CVL_POLLFD* fds, ULONG nfds, int timeout) {
+     snprintf(line + off, sizeof(line) - off, "] caller=%s%s", cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_WSASend(SOCKET s, LPWSABUF bufs, DWORD cnt, LPDWORD sent, DWORD flags,
+                                LPWSAOVERLAPPED ov, LPWSAOVERLAPPED_COMPLETION_ROUTINE cr) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_WSASend(s, bufs, cnt, sent, flags, ov, cr);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_WSASend(s, bufs, cnt, sent, flags, ov, cr);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     int r = Real_WSASend(s, bufs, cnt, sent, flags, ov, cr);
+@@ -978,14 +982,14 @@ static int WSAAPI Hook_WSASend(SOCKET s, LPWSABUF bufs, DWORD cnt, LPDWORD sent,
+              (unsigned long long)s, (unsigned)cnt, OvTag(r, e, ov), r, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_WSARecv(SOCKET s, LPWSABUF bufs, DWORD cnt, LPDWORD bytes, LPDWORD flags,
+                                LPWSAOVERLAPPED ov, LPWSAOVERLAPPED_COMPLETION_ROUTINE cr) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_WSARecv(s, bufs, cnt, bytes, flags, ov, cr);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_WSARecv(s, bufs, cnt, bytes, flags, ov, cr);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     int r = Real_WSARecv(s, bufs, cnt, bytes, flags, ov, cr);
+@@ -997,15 +1001,14 @@ static int WSAAPI Hook_WSARecv(SOCKET s, LPWSABUF bufs, DWORD cnt, LPDWORD bytes
+              (unsigned long long)s, (unsigned)cnt, OvTag(r, e, ov), r, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_WSAIoctl(SOCKET s, DWORD code, LPVOID inb, DWORD inbl, LPVOID outb, DWORD outbl,
+                                 LPDWORD retb, LPWSAOVERLAPPED ov, LPWSAOVERLAPPED_COMPLETION_ROUTINE cr) {
+-    if (g_inHook.load(std::memory_order_relaxed))
+-        return Real_WSAIoctl(s, code, inb, inbl, outb, outbl, retb, ov, cr);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_WSAIoctl(s, code, inb, inbl, outb, outbl, retb, ov, cr);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     char gn[80] = "";
+@@ -1025,14 +1028,13 @@ static int WSAAPI Hook_WSAIoctl(SOCKET s, DWORD code, LPVOID inb, DWORD inbl, LP
+                  ov ? "yes" : "no", r, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static BOOL WSAAPI Hook_WSAGetOverlappedResult(SOCKET s, LPWSAOVERLAPPED ov, LPDWORD lpcbTransfer, BOOL fWait, LPDWORD lpdwFlags) {
+-    if (g_inHook.load(std::memory_order_relaxed))
+-        return Real_WSAGetOverlappedResult(s, ov, lpcbTransfer, fWait, lpdwFlags);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_WSAGetOverlappedResult(s, ov, lpcbTransfer, fWait, lpdwFlags);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     BOOL ok = Real_WSAGetOverlappedResult(s, ov, lpcbTransfer, fWait, lpdwFlags);
+@@ -1050,14 +1052,13 @@ static BOOL WSAAPI Hook_WSAGetOverlappedResult(SOCKET s, LPWSAOVERLAPPED ov, LPD
+                  (unsigned long long)s, (void*)ov, (int)fWait, cb, ErrTag(-1, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return ok;
+ }
+ 
+ static DWORD WSAAPI Hook_WSAWaitForMultipleEvents(DWORD cEvents, const WSAEVENT* lphEvents, BOOL fWaitAll, DWORD timeout, BOOL fAlertable) {
+-    if (g_inHook.load(std::memory_order_relaxed))
+-        return Real_WSAWaitForMultipleEvents(cEvents, lphEvents, fWaitAll, timeout, fAlertable);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_WSAWaitForMultipleEvents(cEvents, lphEvents, fWaitAll, timeout, fAlertable);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     DWORD r = Real_WSAWaitForMultipleEvents(cEvents, lphEvents, fWaitAll, timeout, fAlertable);
+@@ -1080,13 +1081,13 @@ static DWORD WSAAPI Hook_WSAWaitForMultipleEvents(DWORD cEvents, const WSAEVENT*
+                  (unsigned long)(r == (DWORD)WAIT_IO_COMPLETION ? 0 : r - WSA_WAIT_EVENT_0), cb);
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static WSAEVENT WSAAPI Hook_WSACreateEvent(void) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_WSACreateEvent();
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_WSACreateEvent();
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     WSAEVENT ev = Real_WSACreateEvent();
+@@ -1097,13 +1098,13 @@ static WSAEVENT WSAAPI Hook_WSACreateEvent(void) {
+     snprintf(line, sizeof line, "WSACreateEvent ret=%p caller=%s%s", (void*)ev, cb, ErrTag(ev == WSA_INVALID_EVENT ? -1 : 0, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return ev;
+ }
+ 
+ static BOOL WSAAPI Hook_WSACloseEvent(WSAEVENT ev) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_WSACloseEvent(ev);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_WSACloseEvent(ev);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     BOOL r = Real_WSACloseEvent(ev);
+@@ -1114,13 +1115,13 @@ static BOOL WSAAPI Hook_WSACloseEvent(WSAEVENT ev) {
+     snprintf(line, sizeof line, "WSACloseEvent ev=%p ret=%d caller=%s%s", (void*)ev, (int)r, cb, ErrTag(r == FALSE ? -1 : 0, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_WSAEnumNetworkEvents(SOCKET s, WSAEVENT ev, LPWSANETWORKEVENTS ne) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_WSAEnumNetworkEvents(s, ev, ne);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_WSAEnumNetworkEvents(s, ev, ne);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     int r = Real_WSAEnumNetworkEvents(s, ev, ne);
+@@ -1136,13 +1137,13 @@ static int WSAAPI Hook_WSAEnumNetworkEvents(SOCKET s, WSAEVENT ev, LPWSANETWORKE
+              (long)err0, r, cb, ErrTag(r, e));
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ static int WSAAPI Hook_WSACleanup(void) {
+-    if (g_inHook.load(std::memory_order_relaxed)) return Real_WSACleanup();
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_WSACleanup();
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin();
+     int r = Real_WSACleanup();
+@@ -1152,7 +1153,7 @@ static int WSAAPI Hook_WSACleanup(void) {
+     snprintf(line, sizeof line, "WSACleanup ret=%d caller=%s", r, cb);
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+@@ -1163,9 +1164,8 @@ static bool IsKnownSocket(HANDLE h) {
+ }
+ 
+ static HANDLE WINAPI Hook_CreateIoCompletionPort(HANDLE file, HANDLE existing, ULONG_PTR key, DWORD threads) {
+-    if (g_inHook.load(std::memory_order_relaxed))
+-        return Real_CreateIoCompletionPort(file, existing, key, threads);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_CreateIoCompletionPort(file, existing, key, threads);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin(); tx.win32 = true;    // kernel32：错误走 Win32 槽位（REV-001）
+     HANDLE r = Real_CreateIoCompletionPort(file, existing, key, threads);
+@@ -1180,15 +1180,14 @@ static HANDLE WINAPI Hook_CreateIoCompletionPort(HANDLE file, HANDLE existing, U
+              (unsigned long)threads, cb);
+     Emit(line);
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return r;
+ }
+ 
+ // GQCS/GQCSEx 可能为极热循环：前 50 次全记 + 之后每 1000 次记 1 次（call# 计数）
+ static BOOL WINAPI Hook_GetQueuedCompletionStatus(HANDLE port, LPDWORD bytes, PULONG_PTR key, LPOVERLAPPED* pov, DWORD ms) {
+-    if (g_inHook.load(std::memory_order_relaxed))
+-        return Real_GetQueuedCompletionStatus(port, bytes, key, pov, ms);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_GetQueuedCompletionStatus(port, bytes, key, pov, ms);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin(); tx.win32 = true;    // kernel32：错误走 Win32 槽位（REV-001）
+     BOOL ok = Real_GetQueuedCompletionStatus(port, bytes, key, pov, ms);
+@@ -1212,14 +1211,13 @@ static BOOL WINAPI Hook_GetQueuedCompletionStatus(HANDLE port, LPDWORD bytes, PU
+         Emit(line);
+     }
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return ok;
+ }
+ 
+ static BOOL WINAPI Hook_GetQueuedCompletionStatusEx(HANDLE port, void* entries, ULONG count, PULONG removed, DWORD ms, BOOL alertable) {
+-    if (g_inHook.load(std::memory_order_relaxed))
+-        return Real_GetQueuedCompletionStatusEx(port, entries, count, removed, ms, alertable);
+-    g_inHook.store(true, std::memory_order_relaxed);
++    if (g_tlsInHook) return Real_GetQueuedCompletionStatusEx(port, entries, count, removed, ms, alertable);
++    g_tlsInHook = true; g_inFlight.fetch_add(1, std::memory_order_relaxed);
+     void* ret = _ReturnAddress();
+     ErrTx tx; tx.begin(); tx.win32 = true;    // kernel32：错误走 Win32 槽位（REV-001）
+     BOOL ok = Real_GetQueuedCompletionStatusEx(port, entries, count, removed, ms, alertable);
+@@ -1240,7 +1238,7 @@ static BOOL WINAPI Hook_GetQueuedCompletionStatusEx(HANDLE port, void* entries,
+         Emit(line);
+     }
+     tx.end();
+-    g_inHook.store(false, std::memory_order_relaxed);
++    g_inFlight.fetch_sub(1, std::memory_order_relaxed); g_tlsInHook = false;
+     return ok;
+ }
+ 
+@@ -1307,6 +1305,8 @@ static bool InstallHooks() {
+ }
+ 
+ static void InitWorker() {
++    // R2：关闭已开始/已完成则绝不装钩（与 CivTraceShutdown 并发时的竞态保护）
++    if (g_state.load(std::memory_order_relaxed) != HS_RUNNING) return;
+     OpenLogFile();
+     {
+         char exe[MAX_PATH * 2];
+@@ -1331,24 +1331,91 @@ static void InitWorker() {
+     { std::lock_guard<std::mutex> lk(g_modMu); RefreshModulesLocked(); }
+     // REV-001 BUG#1：刷盘线程必须在装钩前启动——否则会话期日志只堆在内存
+     // 队列（超 65536 行即丢弃，进程被杀时全丢），只有卸载/退出才一次性落盘。
++    // R3：flusher 创建失败 fail-closed——不装钩（否则强杀丢全部证据），状态 FAILED 可重试。
++    // 测试 seam：CIVTRACE_SIM_FLUSHER_FAIL=1 模拟 std::thread 创建失败（触发 catch 路径）。
++    {
++        char sim[8] = "";
++        GetEnvironmentVariableA("CIVTRACE_SIM_FLUSHER_FAIL", sim, sizeof sim);
++        if (sim[0] == '1') {
++            Emit("!!! flusher thread creation FAILED [SIM] - hooks NOT installed (fail-closed)");
++            OutputDebugStringA("[civtrace] flusher thread creation FAILED [SIM] - hooks NOT installed (fail-closed)\n");
++            // 刷盘线程已死，队列无人排空：该行必须直接同步落盘，否则证据随进程消失
++            if (g_log) { std::lock_guard<std::mutex> fl(g_fileMu); fputs("!!! flusher thread creation FAILED [SIM] - hooks NOT installed (fail-closed)\n", g_log); fflush(g_log); }
++            g_state.store(HS_FAILED);
++            return;
++        }
++    }
+     try { g_flusher = std::thread(FlushLoop); }
+-    catch (...) { Emit("!!! flusher thread creation FAILED - log flushes only at shutdown"); }
++    catch (...) {
++        Emit("!!! flusher thread creation FAILED - hooks NOT installed (fail-closed)");
++        OutputDebugStringA("[civtrace] flusher thread creation FAILED - hooks NOT installed (fail-closed)\n");
++        if (g_log) { std::lock_guard<std::mutex> fl(g_fileMu); fputs("!!! flusher thread creation FAILED - hooks NOT installed (fail-closed)\n", g_log); fflush(g_log); }
++        g_state.store(HS_FAILED);
++        return;
++    }
++    // 装钩前再查一次：Shutdown 可能恰在此刻开始
++    if (g_state.load(std::memory_order_relaxed) != HS_RUNNING) {
++        Emit("=== init aborted: shutdown already in progress (hooks NOT installed) ===");
++        return;
++    }
+     InstallHooks();
+ }
+ 
+ // 导出：注入器在 FreeLibrary 之前调用。此处无 Loader Lock，可安全等待与反初始化。
+ // 返回值契约（civtrace_common.h）：0=成功 / 1=已 shutdown / 2=部分失败。
+ // 远程线程退出码 = 该返回值（DWORD，完整 32 位），注入器凭它决定是否 FreeLibrary。
++// REV-002 R2 状态机：RUNNING -> SHUTTING_DOWN -> COMPLETE/FAILED；
++// 禁钩失败时保留 DLL/队列/日志资源并返回 2（注入器不得 FreeLibrary），重试 Shutdown 可续走。
+ extern "C" __declspec(dllexport) DWORD NTAPI CivTraceShutdown(void) {
+-    if (g_shutdown.exchange(true)) return 1;   // 重复调用：此前已完成（或已开始）卸载链
++    int expect = HS_RUNNING;
++    if (!g_state.compare_exchange_strong(expect, HS_SHUTTING_DOWN)) {
++        // 非 RUNNING：要么已开始/已完成（幂等），要么 FAILED（允许重试续走关闭链）
++        if (expect == HS_SHUTTING_DOWN || expect == HS_COMPLETE) return 1;
++        g_state.store(HS_SHUTTING_DOWN);           // FAILED -> 重试
++    }
+     Emit("=== shutdown requested via export ===");
+     g_stop = true;
+     bool ok = true;
+     if (g_init.joinable()) g_init.join();          // 确保装钩线程已结束（罕见竞态）
+-    if (MH_DisableHook(MH_ALL_HOOKS) != MH_OK) { Emit("!!! MH_DisableHook(ALL) failed"); ok = false; }
+-    if (g_flusher.joinable()) g_flusher.join();    // 等待正在执行的 Hook 退出 + 刷盘
++    // 测试 seam：CIVTRACE_SIM_DISABLE_FAIL=1 模拟 MH_DisableHook 失败（触发 R2 保留资源路径）
++    {
++        char sim[8] = "";
++        GetEnvironmentVariableA("CIVTRACE_SIM_DISABLE_FAIL", sim, sizeof sim);
++        if (sim[0] == '1') {
++            // T5 一次性消费：清掉 target 进程里的 env，重试（第二次 -u）不再走 SIM 分支
++            SetEnvironmentVariableA("CIVTRACE_SIM_DISABLE_FAIL", "");
++            Emit("!!! MH_DisableHook(ALL) failed [SIM] - hooks stay installed; resources kept; retry Shutdown");
++            g_state.store(HS_FAILED);
++            return 2;
++        }
++    }
++    if (MH_DisableHook(MH_ALL_HOOKS) != MH_OK) {
++        // R2：全部禁用成功才允许释放日志资源；失败保留 DLL/队列/日志，返回 2（不可 FreeLibrary）
++        Emit("!!! MH_DisableHook(ALL) failed - hooks stay installed; resources kept; retry Shutdown");
++        g_state.store(HS_FAILED);
++        return 2;
++    }
++    // R2：在途 Hook 显式排空（禁用后新调用进不来；队列锁 ≠ 执行体排空）
++    LARGE_INTEGER t0, f, now;
++    QueryPerformanceCounter(&t0);
++    QueryPerformanceFrequency(&f);
++    while (g_inFlight.load(std::memory_order_relaxed) > 0) {
++        QueryPerformanceCounter(&now);
++        double sec = (double)(now.QuadPart - t0.QuadPart) / (double)f.QuadPart;
++        if (sec > 5.0) {
++            char line[160];
++            snprintf(line, sizeof line, "!!! in-flight hooks=%ld did not drain within 5s (force continue)",
++                     g_inFlight.load(std::memory_order_relaxed));
++            Emit(line);
++            ok = false;
++            break;
++        }
++        Sleep(5);
++    }
++    if (g_flusher.joinable()) g_flusher.join();    // 刷盘线程收尾（此时已无在途 Hook）
+     if (MH_Uninitialize() != MH_OK) { Emit("!!! MH_Uninitialize failed"); ok = false; }
+     DrainAndClose();
++    g_state.store(ok ? HS_COMPLETE : HS_FAILED);
+     return ok ? 0 : 2;
+ }
+ 
+@@ -1368,9 +1435,17 @@ static BOOL APIENTRY DllMain(HMODULE hmod, DWORD reason, LPVOID reserved) {
+         if (!processExit) {
+             // 兜底路径（注入器未调用导出时）：Loader Lock 下等待有死锁风险，
+             // 仅在导出链不可用时的最后手段；常规卸载必须走 CivTraceShutdown。
++            // R2：兜底不得在无法证明安全时释放资源——禁钩失败则保留（不 MH_Uninitialize），
++            // 只刷盘日志（文件句柄操作安全）；钩子仍在 MinHook 注册表里，DLL 被 FreeLibrary
++            // 后 trampoline 失效由注入器"仍 loaded"复核拦截。
+             if (g_init.joinable()) g_init.join();
++            bool disableOk = (MH_DisableHook(MH_ALL_HOOKS) == MH_OK);
++            if (!disableOk) {
++                Emit("!!! DETACH fallback: MH_DisableHook failed - hooks kept installed; "
++                     "only log flush performed (see civtrace_common.h contract)");
++            }
+             if (g_flusher.joinable()) g_flusher.join();
+-            MH_Uninitialize();
++            if (disableOk) MH_Uninitialize();
+         } else {
+             if (g_init.joinable()) g_init.detach();
+             if (g_flusher.joinable()) g_flusher.detach();

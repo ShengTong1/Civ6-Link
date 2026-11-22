@@ -1,0 +1,40 @@
+# CivLink-M0A-audit —— 仓库整理规范（2026-11-20 P0-D 建立）
+# 用途：将来若引入 git 版本管理，以下产物一律不入库。
+# 依据：docs\HANDOVER-TO-NEXT-AI-20261120.md §2.4 P0-D 第 5 条。
+
+# Rust / Cargo
+target/
+
+# MSVC 中间产物
+obj/
+*.obj
+*.lib
+*.exp
+*.pdb
+*.idb
+
+# 日志（构建、自检、运行一律不进库）
+*.log
+
+# 运行产物
+agent-out/
+userdata/
+deploy-b/
+civlink/pd-*/
+civlink/*-selftest-out/
+
+# 发布包（如需入库再例外）
+dist/*.zip
+*.zip
+
+# 编译产物（嵌套目录一律不入库，含 target-175 独立工具链目录）
+target-175/
+*.exe
+*.dll
+*.pdb
+*.idb
+*.exp
+
+# 审计证据中的备份二进制
+M0A/captures/**/backup/*.exe
+M0A/captures/**/*.exe

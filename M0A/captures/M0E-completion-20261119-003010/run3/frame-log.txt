@@ -1,0 +1,2 @@
+# civlink-agent 0.4.6 - one line per accepted CVLH2 frame
+# time seq session socket gen dst_port payload_len flags src payload_head
