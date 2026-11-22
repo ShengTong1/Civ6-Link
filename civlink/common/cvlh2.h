@@ -1,8 +1,10 @@
 // cvlh2.h - CivLink F1 Hook<->Agent local frame contract (CVLH2, spec v2.1 §4.4)
 //
-// SINGLE definition of the frame layout shared by the Hook DLL (C++) and the Agent (Rust).
-// Both sides must agree byte for byte. If you change anything here, bump CIVLINK_FRAME_VER
-// and update agent/src/frame.rs in the same commit.
+// Reference layout shared by the Hook DLL (C++) and the Agent (Rust). Both sides must agree
+// byte for byte. The Agent's copy of the constants is hand-mirrored in
+// agent/src/main.rs (§4.4 frame block) - there is NO agent/src/frame.rs (Brooks-Lint F1
+// residual: a single extracted frame.rs is the tracked remedy, not yet done). If you change
+// anything here, bump CIVLINK_FRAME_VER and update BOTH copies in the same commit.
 //
 //   offset  size  field
 //   0       4     magic 'C','V','L','H'

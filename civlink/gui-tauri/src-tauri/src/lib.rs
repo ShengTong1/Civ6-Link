@@ -91,20 +91,6 @@ fn list_processes() -> Result<Vec<String>, String> {
     Ok(result)
 }
 
-#[tauri::command]
-fn list_ifaces() -> Result<Vec<String>, String> {
-    let output = {
-        use std::os::windows::process::CommandExt;
-        Command::new("powershell.exe")
-            .args(["-NoProfile", "-Command",
-              "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.IPAddress -notlike '169.254.*' -and $_.IPAddress -ne '127.0.0.1'} | ForEach-Object { $_.IPAddress }"])
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
-            .output().map_err(|e| e.to_string())?
-    };
-    let text = String::from_utf8_lossy(&output.stdout);
-    Ok(text.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
-}
-
 #[derive(serde::Serialize)]
 struct IfaceNamed { ip: String, name: String, metric: u32 }
 
@@ -301,7 +287,7 @@ pub fn run() {
             if let Some(w) = app.get_webview_window("main") { let _ = w.set_focus(); }
         }))
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![run_ctl, list_processes, list_ifaces, list_ifaces_named, last_peer_out, peer_live, agent_out_dir, start_agent, stop_agent, save_diag, udp_port_in_use])
+        .invoke_handler(tauri::generate_handler![run_ctl, list_processes, list_ifaces_named, last_peer_out, peer_live, agent_out_dir, start_agent, stop_agent, save_diag, udp_port_in_use])
         .setup(|app| {
             // Explicit per-install user-data folder next to the exe.
             // Why: the default %LOCALAPPDATA%\io.github.shengtong.civlink\EBWebView can be

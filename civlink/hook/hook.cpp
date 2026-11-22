@@ -339,8 +339,9 @@ static int WSAAPI Hook_sendto(SOCKET s, const char* buf, int len, int flags,
 {
     g_inFlight.fetch_add(1, std::memory_order_relaxed);
     if (g_tlsInHook) {
+        const int rc = Real_sendto(s, buf, len, flags, to, tolen);
         g_inFlight.fetch_sub(1, std::memory_order_relaxed);
-        return Real_sendto(s, buf, len, flags, to, tolen);
+        return rc;
     }
     g_tlsInHook = true;
     c_rawSendto.fetch_add(1, std::memory_order_relaxed);
@@ -359,9 +360,12 @@ static int WSAAPI Hook_sendto(SOCKET s, const char* buf, int len, int flags,
         c_ignored.fetch_add(1, std::memory_order_relaxed);
     }
     g_tlsInHook = false;
-    g_inFlight.fetch_sub(1, std::memory_order_relaxed);
     // The game's call is never altered: same arguments, original return value and last error.
-    return Real_sendto(s, buf, len, flags, to, tolen);
+    // H-1: keep the real call INSIDE the g_inFlight window (mirrors civlink_client.cpp) so
+    // CivLinkShutdown's drain really covers the original send (Brooks-Lint residual R3).
+    const int rc = Real_sendto(s, buf, len, flags, to, tolen);
+    g_inFlight.fetch_sub(1, std::memory_order_relaxed);
+    return rc;
 }
 
 static int WSAAPI Hook_WSASendTo(SOCKET s, LPWSABUF bufs, DWORD count, LPDWORD sent,
@@ -370,8 +374,9 @@ static int WSAAPI Hook_WSASendTo(SOCKET s, LPWSABUF bufs, DWORD count, LPDWORD s
 {
     g_inFlight.fetch_add(1, std::memory_order_relaxed);
     if (g_tlsInHook) {
+        const int rc = Real_WSASendTo(s, bufs, count, sent, flags, to, tolen, ov, fn);
         g_inFlight.fetch_sub(1, std::memory_order_relaxed);
-        return Real_WSASendTo(s, bufs, count, sent, flags, to, tolen, ov, fn);
+        return rc;
     }
     g_tlsInHook = true;
     c_rawWsasendto.fetch_add(1, std::memory_order_relaxed);
@@ -394,22 +399,27 @@ static int WSAAPI Hook_WSASendTo(SOCKET s, LPWSABUF bufs, DWORD count, LPDWORD s
         c_ignored.fetch_add(1, std::memory_order_relaxed);
     }
     g_tlsInHook = false;
+    // H-1: real call stays inside the g_inFlight window (mirrors civlink_client.cpp).
+    const int rc = Real_WSASendTo(s, bufs, count, sent, flags, to, tolen, ov, fn);
     g_inFlight.fetch_sub(1, std::memory_order_relaxed);
-    return Real_WSASendTo(s, bufs, count, sent, flags, to, tolen, ov, fn);
+    return rc;
 }
 
 static int WSAAPI Hook_closesocket(SOCKET s)
 {
     g_inFlight.fetch_add(1, std::memory_order_relaxed);
     if (g_tlsInHook) {
+        const int rc = Real_closesocket(s);
         g_inFlight.fetch_sub(1, std::memory_order_relaxed);
-        return Real_closesocket(s);
+        return rc;
     }
     g_tlsInHook = true;
     ForgetSocket(s); // release the logical id so it is not silently reused
     g_tlsInHook = false;
+    // H-1: real call stays inside the g_inFlight window (mirrors civlink_client.cpp).
+    const int rc = Real_closesocket(s);
     g_inFlight.fetch_sub(1, std::memory_order_relaxed);
-    return Real_closesocket(s);
+    return rc;
 }
 
 // F2 observation detour: records the bind target (AF_INET port), the return value and the
