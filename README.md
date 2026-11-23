@@ -1,129 +1,82 @@
-# CivLink 联机助手（Civ6-Link）
+# CivLink 联机助手
 
-**《文明 6》局域网 / VPN 联机辅助工具** —— 解决「双方在同一 WiFi 或 Radmin 等 VPN 里，却互相找不到房间」的经典问题。
+《文明 6》局域网联机辅助工具，解决两台电脑在同一 WiFi 或 VPN 里互相找不到房间的问题。
 
-[![Windows](https://img.shields.io/badge/platform-Windows-0078D6)](https://github.com/ShengTong1/Civ6-Link)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Rust](https://img.shields.io/badge/agent-Rust_1.75-orange)](civlink/agent)
-[![GUI](https://img.shields.io/badge/GUI-Tauri_2-9b59b6)](civlink/gui-tauri)
+## 背景
 
----
+文明 6 局域网联机靠 UDP 62900 端口广播发现房间。机器上有多个网卡时（比如物理无线网卡加 Radmin 之类的 VPN 虚拟网卡），Windows 会把广播交给跃点最小的网卡发出——广播常常从 VPN 网卡出去，同一 WiFi 的另一台机器收不到，两边就互相看不见房间。
 
-## 它解决什么问题
+CivLink 做的事：把广播出口固定到用户勾选的网卡上，并在需要时把房间广告转发到客户端能到达的网络路径。
 
-文明 6 的局域网联机依赖 UDP 62900 广播发现房间。在两台机器之间有**多个网卡**（物理 WLAN + Radmin / ZeroTier 等 VPN 网卡）时：
+## 怎么用
 
-- Windows 会挑 **metric 最小的网卡**发广播 → 广播从 VPN 网卡出去，同 WiFi 的另一台收不到 → 「找不到房间」；
-- 或者广播域跨网段（一台走 VPN、一台走 WiFi）→ 互相看不见。
+服务端（建房的人）：
 
-CivLink 把**出口网卡钉死在你勾选的网卡上**（`IP_UNICAST_IF`），并可选地把真实房间广告**转发到客户端可达的网络路径**，让联机稳定可复现。
+1. 启动游戏，打开 CivLink，在注入页选中游戏进程，勾选网卡，执行注入；
+2. 游戏里创建房间；
+3. 可选：勾选「启用发现补全」，之后全自动，不用再操作。
 
-## 快速上手（30 秒）
+客户端（加入的人）：
 
-**服务端（建房方）**
+1. 启动游戏，在注入页选中进程，勾选能到服务端的那块网卡（同一个 WiFi 选无线网卡，同一个 VPN 选对应网卡），执行注入；
+2. 游戏里刷新局域网列表，看到真实房间名，加入。
 
-1. 启动《文明 6》→ 打开 CivLink → 「注入」页选择进程（`CivilizationVI_DX12` / `CivilizationVI` / `CivilizationVI_DX11`）→ 勾选网卡 → **执行注入**；
-2. 游戏内创建房间（监听 UDP 62900）；
-3. （可选）勾选「启用发现补全」——检测到房间后自动启动，无需任何手动操作。
+停止：游戏里离开房间，点「卸载注入」，退出游戏。发现补全会随卸载一并停止。
 
-**客户端（加入方）**
+## 功能
 
-1. 启动《文明 6》→ CivLink「注入」页选择进程 → 勾选**到服务端可达的网卡**（同 WiFi 选 WLAN，同 VPN 选对应网卡）→ **执行注入**；
-2. 游戏内局域网列表刷新，即可看到真实房间名 → 加入。
+界面分三个页签：注入、节点发现、关于。
 
-**停止**：游戏内离开房间 → 「卸载注入」（发现补全自动一并停止）→ 退出游戏。
+**注入页**分服务端和客户端两种角色。服务端注入观测转发（hook），客户端注入出口定向（client）。网卡列表显示接口名、IP、metric 和优先级，支持 VPN 网卡；注入日志带清空按钮。
 
-## 功能一览
+**节点发现页**勾选网卡后开始广播，60 秒窗口内一旦发现对端，立刻开始逐条路径探测，几秒内给出每条路径的丢包率、p50、p95 和抖动，并推荐一条。结果只反映勾选的网卡，不会掺入没勾的网卡。
 
-| 功能 | 说明 |
-|------|------|
-| 🖱️ 三页签界面 | 注入 / 节点发现 / 关于 |
-| 💉 注入 | 服务端 / 客户端角色切换；进程白名单（DX12 / DX11）；网卡勾选（含 VPN，显示接口名 + metric + 优先级）；卸载注入 |
-| 📡 节点发现 | 勾选网卡 → 60s 持续广播 → **发现对端即内联探测**（几秒出结果）→ 路径表（丢包率 / p50 / p95 / 抖动）+ 推荐路径 |
-| 🔁 发现补全 | 勾选即全自动：检测 UDP 62900 房间 → 启动 agent → 卸载时一并停止 |
-| 📋 关于页 | 版本 / 作者 / 项目地址 + 一键脱敏诊断导出（status + counters + 日志） |
+**关于页**显示版本、作者、项目地址，可一键导出脱敏诊断（运行状态、错误计数、操作日志），方便排查问题。
 
-## 工作原理
+## 原理
 
-**注入（出口定向）** —— `civlink_client.dll` 载入游戏后读取 `client-iface.txt`（写入了你勾选的网卡 IP），对游戏的广播 / 探针套用 `IP_UNICAST_IF`，强制从指定网卡发出。`civlink_hook.dll` 只做观测转发（始终调用原始 API，绝不改写游戏行为）。
+三部分，各管一件事。
 
-**节点发现（像 ping 一样快）** —— agent 保持 60s 广播窗口不中断；一旦发现对端，3 秒后立即内联探测所有「本机勾选网卡 × 对端地址」组合（每路径 100 根探针、死路径 15 根即放弃、`IP_PKTINFO` 按到达网卡过滤，杜绝未勾选网卡掺和），结果实时发布。
+**注入——包从哪块网卡出去。** client.dll 载入游戏后读取配置文件里勾选的网卡 IP，对游戏发出的广播和探针设置 IP_UNICAST_IF，强制从指定网卡发出。hook.dll 只做观测，所有调用原样转发给游戏原本的函数，不改游戏行为、不吞包。卸载走 CivLinkShutdown 把钩子状态复位；再次注入时通过 CivLinkReactivate 重新读取配置、重启钩子，不用重开游戏。
 
-**发现补全（服务端专用）** —— agent 绑定 62901–62999（不碰 62900，留给游戏建房），把收到的客户端发现请求转发给本机游戏、再把游戏的真实房间广告原样转发回去（fail-closed：游戏不应答则客户端什么都拿不到，绝不伪造房间）。
+**节点发现——像 ping 一样量出每条路径的质量。** agent 保持 60 秒的广播窗口不中断，收到对端广播就记下来，3 秒后开始探测。探测覆盖「本机勾选网卡 × 对端地址」的每个组合，每路径打 100 根探针、每根 120 毫秒超时；某条路径连续 15 根没回应就放弃，不再空等。应答按到达网卡过滤（IP_PKTINFO），没勾的网卡即使收到探针也不回，所以结果里不会出现没勾选的网卡。结果实时写进面板，丢包率按实际发出的探针数计算，中途停止不会被当成丢包。窗口期间广播一直在跑，晚加入的机器也能被发现。
 
-**计时** —— done 相位冻结结果发布时间（不虚长「已用 59s」），倒计时基准与广播窗口统一。
-
-## 图片
-
-<div align="center">
-
-### 组件架构
-
-![组件架构](docs/images/architecture.png)
-
-### 使用流程
-
-![使用流程](docs/images/usage-flow.png)
-
-### 网络拓扑（Windows + Radmin VPN 示例）
-
-![网络拓扑](docs/images/topology.png)
-
-</div>
+**发现补全——跨网段转发房间广告。** 只在服务端用。agent 绑定 62901–62999（62900 留给游戏建房），收到客户端的发现请求后转发给本机游戏，再把游戏回的真实房间广告原样转回去。fail-closed：游戏不应答，客户端就什么都收不到，agent 不伪造任何房间。
 
 ## 构建
 
-| 产物 | 命令 | 依赖 |
+| 产物 | 命令 | 说明 |
 |------|------|------|
-| `civlink_hook.dll` / `civlink_client.dll` / `civlink_ctl.exe` | `civlink/build-msvc.cmd` | MSVC x64（vcvars64）+ MinHook v1.3.4（submodule），`/MT` 静态 CRT |
-| `civlink-agent.exe` | `cd civlink/agent && cargo build --release --features peer-discover --target-dir target-175` | Rust **1.75** 固定工具链 |
-| `civlink-gui.exe` | `cd civlink/gui-tauri/src-tauri && cargo build --release` | cargo 1.99，Cargo.lock 保持 **v3** |
-
-> 注：agent 依赖（if-addrs / socket2）已 vendor 到 `civlink/agent/vendor/`，可离线构建。
-
-## 测试
-
-| 测试 | 结果 |
-|------|------|
-| `hook_selftest.exe`（hook 透传 / 计数闭合） | PASS（0 failure） |
-| `client_selftest.exe`（C2 记账层，含换网卡重新激活 J） | PASS（50/50 runner checks + 74 in-process） |
-| `civlink-agent.exe --peer-discover-selftest`（core 纯检查） | **36/0** |
-| 变异 harness（core 打洞检测） | **6/0** |
+| civlink_hook.dll / civlink_client.dll / civlink_ctl.exe | `civlink/build-msvc.cmd` | MSVC x64 + MinHook v1.3.4 子模块，/MT 静态 CRT |
+| civlink-agent.exe | `cd civlink/agent && cargo build --release --features peer-discover --target-dir target-175` | Rust 1.75 固定工具链，依赖已 vendor，可离线 |
+| civlink-gui.exe | `cd civlink/gui-tauri/src-tauri && cargo build --release` | cargo 1.99，Cargo.lock 保持 v3 |
 
 ## 仓库结构
 
 ```
 CivLink/
 ├── civlink/
-│   ├── agent/        # 节点发现 / 发现补全 agent（Rust，零外部依赖默认构建）
-│   ├── hook/         # civlink_hook.dll（观测透传）
-│   ├── client/       # civlink_client.dll（客户端出口网卡钉死）
-│   ├── ctl/          # civlink_ctl.exe（注入 / 卸载 / 状态 / 计数 / 诊断）
-│   ├── gui-tauri/    # civlink-gui.exe（Tauri 桌面界面）
-│   ├── common/       # cvlh2.h（协议帧）、civlink_hook.h、civlink_client.h
-│   └── selftest/     # C++ 自检（client / hook）
-├── docs/             # 文档（LICENSE-DOCS.md）+ 配图（images/）
+│   ├── agent/        # 节点发现 / 发现补全 agent（Rust）
+│   ├── hook/         # civlink_hook.dll，观测透传
+│   ├── client/       # civlink_client.dll，客户端出口网卡钉死
+│   ├── ctl/          # civlink_ctl.exe，注入 / 卸载 / 状态 / 计数
+│   ├── gui-tauri/    # civlink-gui.exe，桌面界面
+│   ├── common/       # 协议帧定义、公共头文件
+│   └── selftest/     # C++ 自检程序
+├── docs/             # 文档许可
 └── deps/             # MinHook v1.3.4（submodule）
 ```
 
-## 文档
-
-| 文档 | 内容 |
-|------|------|
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) / [`SECURITY.md`](SECURITY.md) | 贡献指南 / 漏洞报告 |
-| [`docs/LICENSE-DOCS.md`](docs/LICENSE-DOCS.md) | 文档许可（CC BY 4.0） |
-| [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) | 第三方组件与许可 |
-
 ## 常见问题
 
-**为什么客户端不需要「发现补全」？** —— 补全把**本机**的真实房间广告转发出去；客户端没有本地房间可转发。客户端需要的是出口定向（注入），两者互补而非重复。
+**为什么客户端不需要发现补全？** 补全把本机的真实房间广告转发出去；客户端没有本地房间可转发。客户端需要的是出口定向（注入），两者互补，不是重复。
 
-**SmartScreen 弹「已保护你的电脑」？** —— 新构建的 exe 哈希未知，属正常。点「更多信息 → 仍要运行」一次即可（SmartScreen 会记住该哈希）；要彻底消除需 EV 代码签名证书。
+**SmartScreen 弹「已保护你的电脑」？** 新构建的 exe 哈希未知，属正常。点「更多信息 → 仍要运行」一次即可，SmartScreen 会记住这个哈希；要彻底消除需要 EV 代码签名证书。
 
-**节点发现显示某条路径 100% 丢包？** —— 那是真实测量结果（跨网段交叉组合本就不可达，agent 会提前放弃并标注）。推荐路径永远选丢包率最低的组合。
+**节点发现显示某条路径 100% 丢包？** 那是真实测量结果。跨网段的交叉组合本就不可达，agent 会提前放弃并标注；推荐路径永远选丢包率最低的组合。
 
 ## 许可
 
-- 代码：**MIT**（`LICENSE`，Copyright (c) 2026 shengtong）
-- 文档：**CC BY 4.0**（`docs/LICENSE-DOCS.md`）
-- 第三方：MinHook v1.3.4（BSD-2，见 `THIRD-PARTY-NOTICES.md`）
+- 代码：MIT（LICENSE，Copyright (c) 2026 shengtong）
+- 文档：CC BY 4.0（docs/LICENSE-DOCS.md）
+- 第三方：MinHook v1.3.4（BSD-2，见 THIRD-PARTY-NOTICES.md）
