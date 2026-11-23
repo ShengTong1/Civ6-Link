@@ -1,0 +1,5 @@
+# Vendored crate sources are checksum-verified by cargo: every file under
+# vendor/*/.cargo-checksum.json must keep its exact bytes. If git converts
+# line endings here (Windows runners default to core.autocrlf=true), cargo
+# aborts with "the listed checksum of ... has changed".
+civlink/agent/vendor/** -text
