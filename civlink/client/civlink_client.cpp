@@ -5,7 +5,7 @@
 // to a user-chosen NIC so the broadcast leaves the machine on the interface the host can
 // actually hear (e.g. WLAN instead of a mesh-VPN adapter that has the lowest metric).
 //
-// Design: docs/M0C-C2-DESIGN-20261118.md.  Plan B (primary): per-send setsockopt
+// Plan B (primary): per-send setsockopt
 // IP_UNICAST_IF (level 31) with the interface index in network byte order, Vista+.
 // Plan C (fallback, only if B is proven ineffective on the real two-machine test):
 // broadcast copy-and-forward on every interface; NOT implemented in this increment.

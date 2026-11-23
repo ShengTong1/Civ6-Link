@@ -1,7 +1,0 @@
-﻿t_socket_decl=1 (expect 1)
-hook_socket_decl=1
-thread_local=2
-g_inFlight_refs=105
-g_inHook_residual=0 (expect 0)
-findpids_dynamic=1 (expect 1)
-dumpbin_msvcp_vcruntime_lines=0 (expect 0 = /MT static CRT)

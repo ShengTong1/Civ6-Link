@@ -1,2 +1,0 @@
-﻿civlink-relay 0.1.0 listening on 127.0.0.1:34720 for 40s
-

@@ -1,8 +1,0 @@
-﻿F3B-RELAY-SELFTEST: PASS (43/43)
-evidence dir : C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\M0A\captures\F3B-relay-selftest-20261114-142818
-relay exe    : C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\civlink\relay\target\release\civlink-relay.exe
-relay sha256 : 88AAB6444C6C55311F3FDE80E38ACAF47EAE5FDD1DC1CE17FDB6498C67A0DA87
-peer A       : 0.0.0.0:62691  (peer id 101)
-peer B       : 0.0.0.0:62692  (peer id 202)
-payload1 fnv1a64 : c5620494bd8475c1
-payload2 fnv1a64 : b80f7e942a2daa55

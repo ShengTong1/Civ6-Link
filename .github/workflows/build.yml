@@ -1,30 +1,40 @@
-name: build-civtrace
+name: build-civlink
 on: [push, workflow_dispatch]
 
 jobs:
-  build:
+  agent:
+    name: Agent (civlink-agent.exe)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Vendor MinHook v1.3.4 (BSD-2, build-time dependency only)
-        run: git clone --depth 1 --branch v1.3.4 https://github.com/TsudaKageyu/minhook.git deps/MinHook
-
-      - uses: msys2/setup-msys2@v2
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          msystem: MINGW64
-          update: false
-          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-make
-
-      - shell: msys2 {0}
-        run: |
-          cd civtrace
-          mingw32-make CXX=g++
-
+          toolchain: 1.75.0
+      - name: Build agent (vendored deps, offline)
+        working-directory: civlink/agent
+        run: cargo build --release --features peer-discover --target-dir target-175
+      - name: Run core selftest
+        working-directory: civlink/agent
+        run: .\target-175\release\civlink-agent.exe --peer-discover-selftest
       - uses: actions/upload-artifact@v4
         with:
-          name: civtrace-build
-          path: |
-            civtrace/civtrace.dll
-            civtrace/civinject.exe
+          name: civlink-agent
+          path: civlink/agent/target-175/release/civlink-agent.exe
+          if-no-files-found: error
+
+  gui:
+    name: GUI (civlink-gui.exe)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - name: Build Tauri GUI
+        working-directory: civlink/gui-tauri/src-tauri
+        run: cargo build --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: civlink-gui
+          path: civlink/gui-tauri/src-tauri/target/release/civlink-gui.exe
           if-no-files-found: error

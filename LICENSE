@@ -22,8 +22,7 @@ SOFTWARE.
 
 --------------------------------------------------------------------------------
 Scope: This MIT License covers all CivLink SOURCE CODE (agent / hook / client /
-ctl / GUI / relay / fakeip / selftest / build scripts), unless a file states a
-different license. Project DOCUMENTATION (README, docs/*.md, design and audit
-reports) is licensed separately under Creative Commons Attribution 4.0
-International (CC BY 4.0) - see docs/LICENSE-DOCS.md. Third-party components
-keep their own licenses - see THIRD-PARTY-NOTICES.md.
+ctl / GUI / selftest / build scripts), unless a file states a different license.
+Project DOCUMENTATION (README, docs/*.md) is licensed separately under Creative
+Commons Attribution 4.0 International (CC BY 4.0) - see docs/LICENSE-DOCS.md.
+Third-party components keep their own licenses - see THIRD-PARTY-NOTICES.md.

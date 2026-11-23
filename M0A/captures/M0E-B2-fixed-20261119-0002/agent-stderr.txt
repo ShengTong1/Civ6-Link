@@ -1,1 +1,0 @@
-[!] LAN simulated host: 0.0.0.0:62900 reserved for the game host (--reserve-62900), not bound by the Agent

@@ -1,9 +1,0 @@
-﻿civinject v0.4 - CivLink M0-A trace DLL injector
-[*] 'powershell.exe' matched 3 process(es):
-      pid=35244 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
-      pid=37008 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
-      pid=36632 -> C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
-[*] unload: C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\civtrace\civtrace.dll (pid=36632)
-[+] pid=36632 civtrace.dll not loaded - nothing to unload
-
-exit=0

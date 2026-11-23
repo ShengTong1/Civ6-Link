@@ -15,11 +15,11 @@ See the root `LICENSE` (MIT, source code) and `docs/LICENSE-DOCS.md`
 - **Bundled HDE32/HDE64 portion:** Portions Copyright (c) 2008-2009,
   Vyacheslav Patkov ("Hacker Disassembler Engine", distributed under the
   BSD-style terms reproduced in `deps/MinHook/LICENSE.txt:27-59` and noted at
-  `deps/MinHook/src/hde/hde32.c:3` and `hde64.c:3`). This notice is required by
-  `docs/M0D-OPENSOURCE-PLAN-20261118.md` §7.2; the full license text is bundled
-  in `deps/MinHook/LICENSE.txt` and applies to that disassembler portion.
-- **Used by:** `civlink/hook/civlink_hook.dll`, `civlink/client/civlink_client.dll`,
-  and the `civtrace/` observation tool — all Win32 API detours.
+  `deps/MinHook/src/hde/hde32.c:3` and `hde64.c:3`). The full license text is
+  bundled in `deps/MinHook/LICENSE.txt` and applies to that disassembler
+  portion.
+- **Used by:** `civlink/hook/civlink_hook.dll` and
+  `civlink/client/civlink_client.dll` — Win32 API detours.
 - **Full license text:** `deps/MinHook/LICENSE.txt` (also `LICENSE.txt` in the
   upstream tree). No MinHook binary is redistributed; it is built locally by
   `civlink/build-msvc.cmd` with the pinned source.
@@ -29,20 +29,22 @@ modification, are permitted provided that the copyright notice, this list of
 conditions and the disclaimer are retained in source or binary distributions.
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS".
 
-## 2. Rust crates — built from source, zero external crates
+## 2. Rust crates — vendored, built from source
 
-`civlink-agent`, `civlink-relay`, `civlink-fakeip` declare **no external
-dependencies** (their `Cargo.lock` files contain only the crates themselves).
-They are built with `cargo +1.75.0 --offline`. No third-party Rust code is
-bundled.
+`civlink-agent` has **zero external dependencies** in its default build. The
+optional `--peer-discover` feature uses two crates (`if-addrs`, `socket2`),
+vendored under `civlink/agent/vendor/` and pinned by
+`civlink/agent/Cargo.lock`; they are compiled from source at build time.
+No other third-party Rust code is bundled.
 
 ## 3. Microsoft components — NOT redistributed, provided by the user's system
 
 - **Microsoft Visual C++ Runtime** — statically linked into native binaries
   with `/MT`; MSVC Build Tools are used at build time only.
-- **.NET Framework 4.x (WinForms)** for `civlink_tray.exe` / the legacy
-  `civlink_ctl_gui.exe`, or **.NET Desktop Runtime 8.0.3** for the optional
-  WPF path. Neither runtime is bundled; install it on the target machine.
+- **.NET Desktop Runtime 8.0.3** — for the optional `civlink_ctl_gui.exe`
+  helper. Not bundled; install it on the target machine.
+- **WebView2 Runtime** — required by the Tauri GUI (`civlink-gui.exe`);
+  ships with Windows 10/11 or is installed by Microsoft Edge. Not bundled.
 - **Windows SDK** headers and import libraries (`winsock2.h`, `iphlpapi.lib`,
   `psapi.lib`) — system APIs, not redistributed.
 

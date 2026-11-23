@@ -1,5 +1,0 @@
-﻿REV-002 evidence 2026-11-17 00:05:42 +08:00
-Microsoft Windows 11 专业版 build 26100 UBR 4946
-Admin: True  User: dd  Machine: DESKTOP-E9ERP1I
-Injector SHA256: eacde79727fca730fb04b29e1a0f173ea0a4e37f930b386cda7cfcd84d0aa71d
-DLL SHA256: ade54435fcc2af37d8d5c5731f7b3c3edbb0dbe98f15f22ac20731a7f79cea0e

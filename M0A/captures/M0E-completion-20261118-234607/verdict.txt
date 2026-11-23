@@ -1,9 +1,0 @@
-M0-E COMPLETION SELFTEST
-checks          : 28/28
-failed          : 0
-replay forwarded: True
-evidence        : C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\M0A\captures\M0E-completion-20261118-234607
-
-PROVES (mechanical, loopback): one magic in -> one loopback replay -> 22 pages forwarded from the probed port; silent target yields nothing.
-DOES NOT PROVE: that real Civilization VI answers the replay, that a real client accepts the pages, any cross-machine behaviour.
-Simulated evidence only - NOT a two-real-hosts result, NOT E2-B/E3.

@@ -1,5 +1,0 @@
-﻿run2 final binary: 2026-11-10 23:05:45 +08:00
-Microsoft Windows 11 专业版 build 26100 UBR 4946
-Admin: True  User: dd  Machine: DESKTOP-E9ERP1I
-Injector SHA256: c09ad2669e0c99f125e05e9819d2cefd474f27d1529a337294ff0d9f3ca11a81
-DLL SHA256: 7dba505cc8152179cde6c0225f812bccf10e5835446726f5bc4e99e067409927

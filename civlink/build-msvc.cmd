@@ -3,7 +3,7 @@ REM civlink F1 build script -- MSVC (cl) version, /MT static CRT (project hard r
 REM Produces:
 REM   civlink_hook.dll   observation-only discovery Hook DLL (x64)
 REM   civlink_ctl.exe    inject / status / counters / shutdown controller
-REM MinHook is the same pinned v1.3.4 tree used by civtrace (..\deps\MinHook).
+REM MinHook is the pinned v1.3.4 tree at ..\deps\MinHook (submodule).
 REM
 REM NOTE ON OBJECT PATHS: our hook\hook.cpp and MinHook's src\hook.c share the object base
 REM name "hook". Compiling both into the same directory made cl overwrite one with the other

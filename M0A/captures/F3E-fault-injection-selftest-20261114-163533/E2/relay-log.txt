@@ -1,8 +1,0 @@
-# civlink-relay 0.1.0 - F3-B routing prototype: forward by dst_peer, payload verbatim
-08:35:36.855 register peer=101 from=127.0.0.1:57677 (peers known: 1)
-08:35:36.855 register peer=202 from=127.0.0.1:57678 (peers known: 2)
-08:35:36.912 register peer=101 from=127.0.0.1:57677 (peers known: 2)
-08:35:36.912 register peer=202 from=127.0.0.1:57678 (peers known: 2)
-08:35:36.959 register peer=101 from=127.0.0.1:57677 (peers known: 2)
-08:35:36.960 register peer=202 from=127.0.0.1:57678 (peers known: 2)
-08:35:37.130 forward seq=1 src_peer=101 dst_peer=202 len=8 hash=c5620494bd8475c1 head=17320000ffff4fac -> 127.0.0.1:57678

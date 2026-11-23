@@ -6,7 +6,7 @@
 //
 // THIS TEST PROVES THE BOOKKEEPING LAYER ONLY.  It does not, and cannot, prove which
 // physical adapter a datagram actually left through - that needs a second machine plus a
-// capture (docs/M0C-C2-DESIGN-20261118.md 3.3 step 2/3).  The runner prints
+// capture on a second machine (design step 2/3).  The runner prints
 // "Egress adapter: NOT VERIFIED" for exactly this reason; do not read a green run as a
 // C2 verdict.
 //

@@ -23,7 +23,7 @@ accounts, and any use on machines you do not own or administer.
 
 Please report privately instead of opening a public issue. Include:
 
-- affected version / file hash (see `README.md` and the relevant report),
+- affected version / file hash,
 - steps to reproduce (isolated from any real matchroom),
 - impact and suggested fix.
 
@@ -35,7 +35,7 @@ security advisory is enabled.
 I will acknowledge within 7 days where possible, triage severity, and publish
 a fix or mitigation in a release note. Do not include live personal data,
 room names, or real credentials in a report; redact them (the GUI diagnostic
-export does the same, see `docs/M0D-GUI-DESIGN-20261118.md`).
+export does the same).
 
 ## Disclosure policy
 
@@ -50,12 +50,8 @@ export does the same, see `docs/M0D-GUI-DESIGN-20261118.md`).
   `civlink_client.dll`, `civlink_ctl.exe`) are built from audited source with
   `/MT` static CRT and a pinned MinHook v1.3.4 tree; release notes publish
   SHA-256 values for cross-checking.
-- The GUI build (`build-gui.ps1`) does **not** produce reproducible output
-  hashes on machines without official .NET Framework reference assemblies —
-  22 PE/MVID bytes differ even with `/deterministic+`. Acceptance is based on
-  stable source hash + stable output size + zero-error exit, never on a
-  matching output SHA-256. Do not treat a different output hash as tampering;
-  verify the source hash and rebuild in a clean environment instead.
+- The Tauri GUI embeds the frontend at build time; accept it only from a
+  trusted release note with matching hashes.
 - Never run a CivLink binary whose provenance you cannot verify.
 
 ## Non-goals of v1.0 (explicit)
@@ -64,5 +60,3 @@ export does the same, see `docs/M0D-GUI-DESIGN-20261118.md`).
   datapath are plaintext by design in this prototype. Do not use on a network
   you do not trust.
 - No anonymous statistics, no public relay, no global matchmaking.
-- "Local/mechanical evidence" in the docs does not mean verified two-player
-  online play; Gate A remains unapproved (see `README.md` status line).

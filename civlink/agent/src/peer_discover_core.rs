@@ -5,7 +5,7 @@
 //! mode even in the DEFAULT (zero-dependency) build. The feature-gated network I/O lives in
 //! `peer_discover_net.rs` and only consumes these primitives.
 //!
-//! Protocol (docs/M0G-PEER-DISCOVER-DESIGN-20261120.md v1.2):
+//! Protocol (v1.2):
 //!   Discovery/Response 24 B : "CLPD"/"CLPR" + version + uuid[16] + probe_port(u16 BE) + flags
 //!   Probe 64 B              : "CLPP" + version + seq(u16 BE) + flags + T1,T2,T3(u64 BE) + reserved
 //! Timestamps are u64 nanoseconds on a monotonic clock; only the OWNER's T1/T4' are compared.

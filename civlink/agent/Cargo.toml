@@ -10,7 +10,8 @@ description = "CivLink F1 Agent: receives CVLH2 frames from civlink_hook.dll and
 # no crate cache succeeds, keeping the F1/F2/F5/E2 audit surface small.
 # The optional M0-G `--peer-discover` mode is gated behind the `peer-discover` feature
 # (off by default). When enabled it needs vendored crates (see ./vendor + ./.cargo/config.toml).
-# Decision record: docs/RUST-NETLIB-FACTCHECK-20261120.md + docs/PEER-DISCOVERY-RESEARCH-20261120.md.
+# Decision record: the peer-discover network layer was researched and validated before
+# integration (fact-check + design review), then re-verified by the in-tree selftests.
 [dependencies]
 if-addrs = { version = "0.15", optional = true }
 socket2 = { version = "0.6", optional = true, features = ["all"] }

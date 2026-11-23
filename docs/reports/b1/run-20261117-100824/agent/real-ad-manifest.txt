@@ -1,5 +1,0 @@
-# B1 real advertisement capture (civlink-agent 0.3.0)
-# captured at: 02:08:31.561 (run end)
-# pages: 1 (active reply set once full 22: no (fixture still used))
-# source: P1 = hook chain frames (A-machine Civ6 sendto); P2 = LAN discovery-port broadcast loopback
-page 01: sha256=ddc8cd34d85eb43b218f6a4db8b6867ecfb9c703623b69c3aaf7a93d8d6d99e8 bytes=1104

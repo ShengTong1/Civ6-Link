@@ -11,7 +11,7 @@
 //     and last error are returned untouched, no call is swallowed. (Swallowing belongs to
 //     F2/F3 and requires the Agent to actually deliver the packet.)
 //
-// HARD RULES taken from the M0-A audit findings (REV-002 lessons, see civtrace/):
+// HARD RULES from the M0-A audit findings (REV-002 lessons):
 //   * Every detour increments g_inFlight as its very first statement and decrements on every
 //     exit path. A thread_local guard (g_tlsInHook) passes through instead of observing, so
 //     our own IPC send can never recurse into the detour.

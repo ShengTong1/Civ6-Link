@@ -1,9 +1,0 @@
-# civlink-relay 0.1.0 - F3-B routing prototype: forward by dst_peer, payload verbatim
-06:27:19.865 register peer=101 from=127.0.0.1:59500 (peers known: 1)
-06:27:19.932 register peer=202 from=127.0.0.1:59501 (peers known: 2)
-06:27:20.084 forward seq=1 src_peer=101 dst_peer=202 len=8 hash=c5620494bd8475c1 head=17320000ffff4fac -> 127.0.0.1:59501
-06:27:20.164 no-route seq=2 dst_peer=999 from=127.0.0.1:59500
-06:27:20.241 self-drop seq=3 peer=101 (dst == sender)
-06:27:20.319 forward seq=4 src_peer=101 dst_peer=202 len=120 hash=b80f7e942a2daa55 head=030a11181f262d34 -> 127.0.0.1:59501
-06:27:20.400 reject len=12 kind=too-short from=127.0.0.1:59500
-06:27:20.473 reject len=24 kind=bad-magic from=127.0.0.1:59500

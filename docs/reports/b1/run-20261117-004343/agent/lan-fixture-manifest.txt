@@ -1,4 +1,0 @@
-# LAN simulated host fixture
-# fixture dir: C:\Users\dd\Desktop\injciv6-v0.3.3\CivLink-M0A-audit\civlink\fixture-reply-set
-# room name: CivLink-Test-Room-2222 (anonymized at offset 24..46)
-# listen: 0.0.0.0 on 62900..62999; pages below are the exact reply bytes.

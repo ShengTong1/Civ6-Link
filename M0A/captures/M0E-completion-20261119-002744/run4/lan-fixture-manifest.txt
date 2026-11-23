@@ -1,5 +1,0 @@
-# LAN simulated host fixture
-# fixture dir: (none - M0-E completion mode answers from the local game)
-# room name: CivLink-Test-Room-2222 (anonymized at offset 24..46)
-# listen: 0.0.0.0 on 62900..62999; pages below are the exact reply bytes.
-# mode: discovery completion (loopback replay, real room from the local game)

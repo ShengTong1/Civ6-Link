@@ -1,6 +1,6 @@
 // civlink_ctl.cpp - CivLink F1 controller: inject / status / counters / shutdown
 //
-// Deliberately small and boring. Every remote call is validated the same way civtrace's
+// Deliberately small and boring. Every remote call is validated the same way
 // injector does it (REV-001/REV-002 lessons carried over):
 //   * resolve the export RVA from a DONT_RESOLVE_DLL_REFERENCES mapping of the local DLL,
 //   * confirm the module loaded in the target has the same PE identity (SizeOfImage +

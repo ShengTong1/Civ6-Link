@@ -1,1 +1,0 @@
-PEERDISCOVER: discovered=1 paths=1 recommended=WLAN(192.168.31.60) -> 192.168.31.214:63011

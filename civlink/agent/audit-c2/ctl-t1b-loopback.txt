@@ -1,3 +1,0 @@
-civlink_ctl v0.2.0-f2 - CivLink F1 discovery hook controller
-[!] --iface '127.0.0.1' resolves to the loopback pseudo interface (Loopback Pseudo-Interface 1 (IfIndex=1 IfType=24 metric=75)) - refusing
-    loopback is not a real egress choice; use ALL or a physical/virtual NIC

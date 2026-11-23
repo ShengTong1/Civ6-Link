@@ -1,1 +1,0 @@
-# civlink-relay 0.1.0 - F3-B routing prototype: forward by dst_peer, payload verbatim

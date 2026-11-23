@@ -1,6 +1,4 @@
-# 🏛️ CivLink 联机助手（Civ6-Link）
-
-> 版本：**1.49**（2026-11-23） · 首版范围决议见 `docs/PROJECT-SCOPE-WIN-STEAM-2P.md` · 完整修订历史与实验手册见 `docs/M0A-MANUAL.md`
+# CivLink 联机助手（Civ6-Link）
 
 **《文明 6》局域网 / VPN 联机辅助工具** —— 解决「双方在同一 WiFi 或 Radmin 等 VPN 里，却互相找不到房间」的经典问题。
 
@@ -47,7 +45,7 @@ CivLink 把**出口网卡钉死在你勾选的网卡上**（`IP_UNICAST_IF`）�
 
 ## 工作原理
 
-**注入（出口定向）** —— `civlink_client.dll` 载入游戏后读取 `client-iface.txt`（写入了你勾选的网卡 IP），对游戏的广播 / 探针套用 `IP_UNICAST_IF`，强制从指定网卡发出。`civlink_hook.dll` 只做观测转发（始终调用原始 API，绝不改写游戏行为，B2 审计模式）。
+**注入（出口定向）** —— `civlink_client.dll` 载入游戏后读取 `client-iface.txt`（写入了你勾选的网卡 IP），对游戏的广播 / 探针套用 `IP_UNICAST_IF`，强制从指定网卡发出。`civlink_hook.dll` 只做观测转发（始终调用原始 API，绝不改写游戏行为）。
 
 **节点发现（像 ping 一样快）** —— agent 保持 60s 广播窗口不中断；一旦发现对端，3 秒后立即内联探测所有「本机勾选网卡 × 对端地址」组合（每路径 100 根探针、死路径 15 根即放弃、`IP_PKTINFO` 按到达网卡过滤，杜绝未勾选网卡掺和），结果实时发布。
 
@@ -87,15 +85,15 @@ CivLink 把**出口网卡钉死在你勾选的网卡上**（`IP_UNICAST_IF`）�
 
 | 测试 | 结果 |
 |------|------|
-| `run-c2-iface-selftest.ps1`（C2 记账层） | **50/50 runner checks + 74 in-process**（场景 A–J，含换网卡重新激活 J） |
 | `hook_selftest.exe`（hook 透传 / 计数闭合） | PASS（0 failure） |
+| `client_selftest.exe`（C2 记账层，含换网卡重新激活 J） | PASS（50/50 runner checks + 74 in-process） |
 | `civlink-agent.exe --peer-discover-selftest`（core 纯检查） | **36/0** |
 | 变异 harness（core 打洞检测） | **6/0** |
 
 ## 仓库结构
 
 ```
-CivLink-M0A-audit/
+CivLink/
 ├── civlink/
 │   ├── agent/        # 节点发现 / 发现补全 agent（Rust，零外部依赖默认构建）
 │   ├── hook/         # civlink_hook.dll（观测透传）
@@ -103,11 +101,8 @@ CivLink-M0A-audit/
 │   ├── ctl/          # civlink_ctl.exe（注入 / 卸载 / 状态 / 计数 / 诊断）
 │   ├── gui-tauri/    # civlink-gui.exe（Tauri 桌面界面）
 │   ├── common/       # cvlh2.h（协议帧）、civlink_hook.h、civlink_client.h
-│   └── selftest/     # C++ 自检（client / hook / fakeip）
-├── docs/             # 实验手册、交接文档、范围决议、审计报告
-├── M0A/              # 审计证据与运行记录（captures）
-├── scripts/          # 构建 / 自检 / 预检脚本
-├── dist/             # 发布包（zip）
+│   └── selftest/     # C++ 自检（client / hook）
+├── docs/             # 文档（LICENSE-DOCS.md）+ 配图（images/）
 └── deps/             # MinHook v1.3.4（submodule）
 ```
 
@@ -115,11 +110,9 @@ CivLink-M0A-audit/
 
 | 文档 | 内容 |
 |------|------|
-| [`docs/M0A-MANUAL.md`](docs/M0A-MANUAL.md) | 实验手册（章节 0–10 + v1.1–v1.49 修订记录） |
-| [`docs/CODEX-HANDOVER-M0A.md`](docs/CODEX-HANDOVER-M0A.md) | AI 交接 / 登记链 |
-| [`docs/HANDOVER-TO-NEXT-AI-20261120.md`](docs/HANDOVER-TO-NEXT-AI-20261120.md) | 项目交接文档（2026-11-20） |
-| [`docs/PROJECT-SCOPE-WIN-STEAM-2P.md`](docs/PROJECT-SCOPE-WIN-STEAM-2P.md) | 首版范围决议（Windows + Steam + 双人） |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) / [`SECURITY.md`](SECURITY.md) | 贡献指南 / 漏洞报告 |
+| [`docs/LICENSE-DOCS.md`](docs/LICENSE-DOCS.md) | 文档许可（CC BY 4.0） |
+| [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) | 第三方组件与许可 |
 
 ## 常见问题
 

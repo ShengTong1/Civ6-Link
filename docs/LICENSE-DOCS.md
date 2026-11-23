@@ -29,8 +29,7 @@ Human-readable summary: https://creativecommons.org/licenses/by/4.0/
 
 **Attribution hint:** "CivLink documentation, (c) 2026 shengtong,
 licensed under CC BY 4.0." The copyright holder was confirmed by the project
-owner on 2026-11-18 (see `docs/M0D-OPENSOURCE-PLAN-20261118.md`, Decision Point
-§9.1).
+owner on 2026-11-18.
 
 No warranties are given. The documentation is provided "as is"; see the CC BY
 4.0 disclaimer for details. This license applies to documentation only and in

@@ -1,1 +1,0 @@
-PEERDISCOVER: discovered=0 paths=0 recommended=none

@@ -1,8 +1,0 @@
-﻿# PC-A Radmin VPN metric backup - 
-InterfaceAlias=Radmin VPN
-InterfaceIndex=21
-GUID={ced510fd-6575-4880-b03d-7add9d1e4c8d}
-InterfaceMetricRegValue=1
-AutomaticMetric=Disabled
-EnableDHCP=0
-WLAN metric=45 (target: Radmin must be > 45 so broadcast uses WLAN)
