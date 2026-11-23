@@ -7,15 +7,38 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.75.0
+      - name: Install Rust 1.75.0
+        shell: pwsh
+        run: rustup toolchain install 1.75.0 --profile minimal
+      - name: Diagnostics
+        shell: pwsh
+        working-directory: civlink/agent
+        run: |
+          $rustc = (rustup run 1.75.0 rustc --version 2>&1) -join ' '
+          $cargo = (rustup run 1.75.0 cargo --version 2>&1) -join ' '
+          $vendorFiles = (Get-ChildItem vendor -Recurse -File | Measure-Object).Count
+          Write-Output "::notice::rustc=$rustc"
+          Write-Output "::notice::cargo=$cargo"
+          Write-Output "::notice::vendor files=$vendorFiles"
       - name: Build agent (vendored deps, offline)
+        shell: pwsh
         working-directory: civlink/agent
-        run: cargo build --release --features peer-discover --target-dir target-175
+        run: |
+          $log = 'build-out.txt'
+          & rustup run 1.75.0 cargo build --release --features peer-discover --target-dir target-175 2>&1 | Tee-Object -FilePath $log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            $errs = (Select-String -Path $log -Pattern '^error' -SimpleMatch:$false | Select-Object -First 6 | ForEach-Object { $_.Line })
+            if (-not $errs) { $errs = Get-Content $log -Tail 6 }
+            Write-Output ("::error::cargo build exit " + $code + " : " + (($errs -join ' | ') -replace '"', "'"))
+            exit $code
+          }
       - name: Run core selftest
+        shell: pwsh
         working-directory: civlink/agent
-        run: .\target-175\release\civlink-agent.exe --peer-discover-selftest
+        run: |
+          .\target-175\release\civlink-agent.exe --peer-discover-selftest
+          if ($LASTEXITCODE -ne 0) { Write-Output "::error::selftest failed"; exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
           name: civlink-agent
