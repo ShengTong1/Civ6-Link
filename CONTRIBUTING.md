@@ -19,8 +19,10 @@ because this tool injects into a game process and touches network traffic.
 ## Development setup (Windows)
 
 - Toolchain: MSVC Build Tools (path in `civlink/build-msvc.cmd`, overridable
-  via the `VCVARS` environment variable), Rust 1.75 via `cargo +1.75.0
-  --offline` for the agent, and `cargo` (Cargo.lock v3) for the Tauri GUI.
+  via the `VCVARS` environment variable), Rust 1.75 pinned via `cargo
+  +1.75.0` for the agent (its Cargo.lock is format v3; a newer cargo must
+  not rewrite it to v4, or 1.75 can no longer read it), and the default
+  `cargo` for the Tauri GUI.
 - Native build: `civlink/build-msvc.cmd` (produces the hook/client DLLs,
   `civlink_ctl.exe`, and the C++ selftests; `/MT` static CRT, pinned MinHook).
 - Agent build: `cd civlink/agent && cargo build --release --features

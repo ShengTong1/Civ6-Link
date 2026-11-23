@@ -48,8 +48,10 @@ CivLink 做的事：把广播出口固定到用户勾选的网卡上，并在需
 | 产物 | 命令 | 说明 |
 |------|------|------|
 | civlink_hook.dll / civlink_client.dll / civlink_ctl.exe | `civlink/build-msvc.cmd` | MSVC x64 + MinHook v1.3.4 子模块，/MT 静态 CRT |
-| civlink-agent.exe | `cd civlink/agent && cargo build --release --features peer-discover --target-dir target-175` | Rust 1.75 固定工具链，依赖已 vendor，可离线 |
-| civlink-gui.exe | `cd civlink/gui-tauri/src-tauri && cargo build --release` | cargo 1.99，Cargo.lock 保持 v3 |
+| civlink-agent.exe | `cd civlink/agent && cargo +1.75.0 build --release --features peer-discover --target-dir target-175` | 固定 1.75 工具链（`rustup toolchain list` 需装有 1.75.0），依赖已 vendor，可离线 |
+| civlink-gui.exe | `cd civlink/gui-tauri/src-tauri && cargo build --release` | 默认 cargo（当前 1.99），Cargo.lock 保持 v3 格式 |
+
+Cargo.lock 顶部的 `version = 3` 是锁文件格式版本号，不是依赖版本。cargo 1.75 只认 v3；新版 cargo 默认会写成 v4，一旦被升级，1.75 工具链就读不了这份 lock（之前踩过这个坑）。所以 GUI 构建提交时锁文件必须还是 v3——新 cargo 构建后别让它顺手把格式升上去。
 
 ## 仓库结构
 
